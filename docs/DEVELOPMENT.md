@@ -45,10 +45,16 @@ tests read `artifacts/private-saves/{a,b}/SaveGames`, and the play-flow tests re
 
 ## Releasing
 
-1. Bump `world_version` in `archipelago/apworld/dead_as_disco/catalog.json`.
-2. `make-template.py` and `audit-release.py`, commit.
-3. `make-release.py --version X.Y.Z`; attach the zip to a GitHub release. The zip contains the app, the mod files, the pinned UE4SS
-   archive, the YAML, the apworld, the README and the audit, plus a certificate (`capabilities.json`) pinning source hashes.
+There are two versions. The **release version** (`--version`) names the app package and the GitHub release. The **world version**
+(`world_version` in `archipelago/apworld/dead_as_disco/catalog.json`) is carried by the apworld, the YAML and every generated
+multiworld, and is part of the content hash the client checks. **Only bump the world version when multiworlds generated before the
+change must stop working** (new/removed items or checks, option changes); a fix to the app, the client or the mod ships as a new
+release of the same world, so players mid-multiworld can just update.
+
+1. If the world changed: bump `world_version`, run `make-template.py` and `audit-release.py`.
+2. `make-release.py --version X.Y.Z`; attach the zip to a GitHub release (notes in `docs/release-notes/X.Y.Z.md`). The zip contains
+   the app, the mod files, the pinned UE4SS archive, the YAML, the apworld, the README and the audit, plus a certificate
+   (`capabilities.json`, with both versions) pinning source hashes. The app shows the release version in its title bar.
 
 ## How it works (short)
 

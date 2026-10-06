@@ -1,4 +1,4 @@
-# Dead as Disco Archipelago (0.5.5)
+# Dead as Disco Archipelago (release 0.5.6, world 0.5.5)
 
 Players: read [the main README](../README.md). Exact support numbers: [FINAL_AUDIT.md](../docs/FINAL_AUDIT.md).
 

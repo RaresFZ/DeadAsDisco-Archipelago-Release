@@ -76,6 +76,58 @@ class ProductionTests(unittest.TestCase):
             self.assertEqual(fresh.reconcile(live,saved),0)        # a restarted client never grants it again
             ledger.close()
 
+    def test_client_exits_promptly_on_error_even_if_the_console_pipe_stays_open(self):
+        import subprocess, sys
+        code = ("import asyncio, types\n"
+                "from archipelago.client.main import console_input\n"
+                "async def run():\n"
+                "    ctx = types.SimpleNamespace(exit_event=asyncio.Event(), connected=False)\n"
+                "    task = asyncio.create_task(console_input(ctx))\n"
+                "    await asyncio.sleep(0.3)\n"
+                "    task.cancel()\n"
+                "    raise RuntimeError('client failed')\n"
+                "try:\n"
+                "    asyncio.run(run())\n"
+                "except RuntimeError:\n"
+                "    pass\n")
+        process = subprocess.Popen([sys.executable, '-c', code], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[2])
+        try:
+            self.assertEqual(process.wait(timeout=20), 0)          # used to hang for 300 seconds
+        finally:
+            process.kill()
+            process.stdin.close()
+
+    def test_reservations_left_by_an_earlier_game_session_never_lock_the_profile(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+            root=Path(folder);source=root/'source';source.write_text('fixture')
+            cert=root/'cert';cert.write_text(json.dumps(dict(status='verified-protected-passive-grant-cold',
+                max_health_delta=10,duplicate_health_delta=0,sources={str(source):hashlib.sha256(source.read_bytes()).hexdigest()})))
+            digest=hashlib.sha256(cert.read_bytes()).hexdigest()
+            catalog=dict(items=[dict(id=7,name='Fan Pack',mechanism='fan-pack',family='filler'),
+                                dict(id=42,tag='Tag.One',mechanism='owned-upgrade')])
+            ledger=Ledger(root/'ledger',Binding('seed',0,1,'generation','slot'))
+            ledger.receive(0,[[7,99,1,0],[42,100,1,0]])
+            def session(name):
+                (root/name).mkdir()
+                return OwnershipReconciler(ledger,catalog,SimpleNamespace(data=dict(production_proof_sha256=digest,
+                    production_control=str(root/name/'control'),launch_token='tok-'+name,credits_control=str(root/name/'credits'))),cert)
+            live={'owned':[]};saved={'owned':[],'save_sha256':'fixture'}
+            session('one').reconcile(live,saved)                    # fan pack reserved, game closed before acknowledging it
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts WHERE idx=0").fetchone()[0],'applying')
+            second=session('two')
+            second.reconcile(live,saved)                           # next launch: delivered again, no exception
+            self.assertTrue((root/'two'/'credits.intent-0').exists())
+            (root/'two'/'credits.applied-0').write_text(json.dumps(dict(index=0,item=7,amount=500)))
+            second.reconcile(live,saved)                           # acknowledged; the native grant is reserved next
+            self.assertEqual([s for _,s in ledger.db.execute("SELECT idx,status FROM receipts ORDER BY idx")],['applied','applying'])
+            third=session('three')                                  # closed again before the game applied the skill
+            third.reconcile(live,saved)                            # not owned in the fresh game: granted again
+            self.assertTrue((root/'three'/'control.intent-1').exists())
+            self.assertEqual(third.reconcile({'owned':['Tag.One']},{'owned':['Tag.One'],'save_sha256':'fixture'}),1)
+            self.assertEqual(ledger.pending_items(),[])
+            ledger.close()
+
     def test_shared_durable_ownership_and_crash_ambiguity(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as root:
             root = Path(root)
@@ -91,11 +143,11 @@ class ProductionTests(unittest.TestCase):
             reconciler = OwnershipReconciler(ledger,catalog,protection,cert)
             reconciler.reconcile({'owned':[]},{'owned':[],'save_sha256':'fixture'})
             self.assertTrue((root/'control.intent-0').exists())
-            # A fresh process may recover durable ownership, but not replay a
-            # reservation whose effect is missing after a crash.
+            # A fresh client process in the same game session neither replays the published reservation nor fails:
+            # it waits for the game, and recovers durable ownership once the game owns the item.
             fresh = OwnershipReconciler(ledger,catalog,protection,cert)
-            with self.assertRaises(ReconciliationError):
-                fresh.reconcile({'owned':[]},{'owned':[],'save_sha256':'fixture'})
+            self.assertEqual(fresh.reconcile({'owned':[]},{'owned':[],'save_sha256':'fixture'}),0)
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts WHERE idx=0").fetchone()[0],'applying')
             self.assertEqual(fresh.reconcile({'owned':['Tag.One']},{'owned':['Tag.One'],'save_sha256':'fixture'}),2)
             self.assertEqual(ledger.pending_items(),[])
             with self.assertRaises(ReconciliationError):

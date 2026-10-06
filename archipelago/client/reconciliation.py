@@ -101,6 +101,16 @@ class Ledger:
             self.db.execute("UPDATE receipts SET status='applying' WHERE idx=?", (index,))
         return True
 
+    def release_reservation(self, index):
+        """Return an in-flight item to 'received' so it can be dispatched again.
+
+        Only for a reservation whose effect is provably absent: a new game session that does not own the item, or a
+        one-shot filler/trap command that the previous game session never acknowledged."""
+        with self.db:
+            result = self.db.execute("UPDATE receipts SET status='received' WHERE idx=? AND status='applying'", (index,))
+            if result.rowcount != 1:
+                raise ReconciliationError("No matching in-flight item")
+
     def mark_durable(self, index, proof):
         # Only a validated game adapter may supply a reopened-save ownership proof.
         if not isinstance(proof, str) or not proof:

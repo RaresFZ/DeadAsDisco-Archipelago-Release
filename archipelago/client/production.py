@@ -101,9 +101,12 @@ class OwnershipReconciler:
                     self.inflight = None; applied += 1
                     continue
                 if status == 'applying':
-                    if self.inflight == index:
-                        return applied
-                    raise ReconciliationError('Ambiguous prior ' + label + '; refuse repeat')
+                    if self.inflight == index or Path(control + f'.intent-{index}').exists():
+                        return applied  # published in this game session: wait for the game's acknowledgment
+                    # Reserved by an earlier game session that never acknowledged it (usually the game was closed
+                    # first). Deliver it again rather than lock the whole profile; in the very rare case the game
+                    # applied it without the acknowledgment surviving, a filler/trap is simply repeated once.
+                    self.ledger.release_reservation(index)
                 self.dispatch(index, row['id'], control, verb, satisfied_prefix)
                 return applied
             if row['mechanism'] != 'owned-upgrade':
@@ -119,17 +122,19 @@ class OwnershipReconciler:
                 # ownership receipts, then confirm the batch after one natural save.
                 satisfied_prefix.add(index)
                 continue
+            if status == 'applying':
+                if self.inflight == index or Path(str(self.command) + f'.intent-{index}').exists():
+                    return applied  # published in this game session: wait for the game to apply it
+                # An earlier game session reserved this grant, but the freshly loaded game does not own the item
+                # (checked above against the live and saved ownership), so it was never applied: grant it again.
+                self.ledger.release_reservation(index)
+                status = 'received'
             if status == 'received' and 'loadable_ownership' in live and row['tag'] not in live['loadable_ownership']:
                 # Do not reserve an unloaded definition. Independent ownership,
                 # access and traps can drain; this receipt remains retryable.
                 satisfied_prefix.add(index)
                 continue
-            if status == 'applying':
-                if self.inflight == index:
-                    return applied
-                raise ReconciliationError('Ambiguous prior native intent; no blind replay')
-            # Commit reservation before publication. A crash between these writes
-            # is ambiguous and requires saved ownership recovery, never replay.
+            # Commit reservation before publication; ownership is idempotent, so a repeat after a crash is safe.
             self.dispatch(index, row['id'], str(self.command), 'grant', satisfied_prefix)
             return applied
         return applied

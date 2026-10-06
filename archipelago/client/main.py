@@ -5,6 +5,7 @@ import json
 import logging
 import hashlib
 import sys
+import threading
 from pathlib import Path
 from .reconciliation import Binding, Ledger, ReconciliationError
 from .bridge import GameBridge
@@ -19,8 +20,20 @@ from .slot_contract import SlotContract
 async def console_input(ctx):
     """Archipelago-style text console: every line from stdin is sent as chat; '!' lines are server commands (!hint ...)."""
     loop = asyncio.get_running_loop()
+    lines = asyncio.Queue()
+
+    def read_stdin():
+        # A daemon thread, not the default executor: a blocked readline must never keep the process alive after an error.
+        try:
+            for text in sys.stdin:
+                loop.call_soon_threadsafe(lines.put_nowait, text)
+            loop.call_soon_threadsafe(lines.put_nowait, "")
+        except (RuntimeError, ValueError, OSError):
+            pass  # the event loop or the pipe is already closed
+
+    threading.Thread(target=read_stdin, daemon=True).start()
     while not ctx.exit_event.is_set():
-        line = await loop.run_in_executor(None, sys.stdin.readline)
+        line = await lines.get()
         if not line:
             return
         line = line.strip()

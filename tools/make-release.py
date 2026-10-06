@@ -1,8 +1,9 @@
 """Assemble the player package: a Windows application folder (no Python/Archipelago install needed to PLAY).
 
-    python tools/make-release.py --version 0.5.0
+    python tools/make-release.py --version 0.5.6
 
-Writes artifacts/ap-release/DeadAsDiscoAP-<version>-windows.zip (refuses to overwrite). Contains no saves, proofs or
+Writes artifacts/ap-release/DeadAsDiscoAP-<version>-windows.zip (refuses to overwrite). --version is the release of the app;
+the apworld and the YAML carry the world version from catalog.json (unchanged unless multiworlds become incompatible). Contains no saves, proofs or
 credentials. The pinned UE4SS archive (MIT licensed) is bundled from tools/downloads and hash-verified here.
 """
 import argparse
@@ -47,8 +48,11 @@ def main():
     if not re.fullmatch(r"\d+\.\d+\.\d+", args.version):
         raise SystemExit("semantic version required")
     catalog = json.loads((ROOT / "archipelago/apworld/dead_as_disco/catalog.json").read_text(encoding="utf-8"))
-    if catalog["world_version"] != args.version:
-        raise SystemExit(f"catalog world_version {catalog['world_version']} != release {args.version}")
+    # The release version names the app package; the world version (catalog.json) only changes when generated multiworlds
+    # become incompatible, so a client-only fix can ship as a new release of the same world.
+    world_version = catalog["world_version"]
+    if not re.fullmatch(r"\d+\.\d+\.\d+", world_version):
+        raise SystemExit("catalog world_version must be a semantic version")
     ue4ss = ROOT / "tools/downloads/ue4ss-dev-1152.zip"
     if sha(ue4ss) != pins.UE4SS_ARCHIVE_SHA256:
         raise SystemExit("local UE4SS archive does not match the pinned hash")
@@ -68,7 +72,7 @@ def main():
     pinned = {key: sha(path) for key, path in data.items() if key.startswith(("archipelago/game-mod/", "tools/runtime/")) or key in CERT_EVIDENCE}
     pinned["archipelago/client/production.py"] = sha(ROOT / "archipelago/client/production.py")
     certificate = {"status": "verified-protected-passive-grant-cold", "max_health_delta": 10, "duplicate_health_delta": 0,
-                   "world_version": args.version, "evidence": CERT_EVIDENCE, "sources": pinned}
+                   "release_version": args.version, "world_version": world_version, "evidence": CERT_EVIDENCE, "sources": pinned}
     # The certificate pins the client source too; ship it as data so the pin is checkable on the player machine.
     data["archipelago/client/production.py"] = ROOT / "archipelago/client/production.py"
     top = {"README.md": ROOT / "README.md",
@@ -89,12 +93,12 @@ def main():
         for name, path in sorted(top.items()):
             add(name, path)
         yaml_text = (ROOT / "archipelago/Dead as Disco.yaml").read_text(encoding="utf-8")
-        yaml_text, replaced = re.subn(r"(?m)^(    Dead as Disco: )\S+", lambda m: m.group(1) + args.version, yaml_text)
+        yaml_text, replaced = re.subn(r"(?m)^(    Dead as Disco: )\S+", lambda m: m.group(1) + world_version, yaml_text)
         if replaced != 1:
             raise SystemExit("YAML requires.game version line not found")
         archive.writestr("DeadAsDiscoAP/Dead as Disco.yaml", yaml_text)
         manifest["Dead as Disco.yaml"] = hashlib.sha256(yaml_text.encode()).hexdigest()
-        archive.writestr("DeadAsDiscoAP/dead_as_disco.apworld", _apworld(ROOT / "archipelago/apworld/dead_as_disco", args.version))
+        archive.writestr("DeadAsDiscoAP/dead_as_disco.apworld", _apworld(ROOT / "archipelago/apworld/dead_as_disco", world_version))
         text = json.dumps(certificate, indent=2, sort_keys=True)
         archive.writestr("DeadAsDiscoAP/data/archipelago/capabilities.json", text)
         manifest["data/archipelago/capabilities.json"] = hashlib.sha256(text.encode()).hexdigest()

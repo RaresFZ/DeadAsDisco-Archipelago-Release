@@ -36,7 +36,7 @@ class App:
         self.buttons = []
         self.client_process = None
         self.settings_path = self.layout.state_dir / "gui-settings.json"
-        root.title(TITLE)
+        root.title(TITLE + self._version())
         root.geometry("820x600")
         ttk.Label(root, text=HELP, justify="left", wraplength=780).pack(padx=12, pady=(10, 4), anchor="w")
         form = ttk.Frame(root)
@@ -77,6 +77,14 @@ class App:
         logging.getLogger().setLevel(logging.INFO)
         root.after(100, self._pump)
         self.log("Ready.")
+
+    def _version(self):
+        """' 0.5.6' from the release certificate; empty when running from a source checkout."""
+        try:
+            certificate = json.loads((self.install_root / "archipelago/capabilities.json").read_text(encoding="utf-8"))
+            return " " + certificate["release_version"]
+        except (OSError, ValueError, KeyError):
+            return ""
 
     # ---- plumbing ---------------------------------------------------------------------------------------
     def log(self, message):
