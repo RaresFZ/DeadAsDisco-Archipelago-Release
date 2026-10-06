@@ -1,0 +1,11 @@
+artifacts/
+tools/downloads/
+*.sav
+*.dmp
+*.usmap
+*.jmap
+**/bin/
+**/obj/
+__pycache__/
+*.py[cod]
+.venv/

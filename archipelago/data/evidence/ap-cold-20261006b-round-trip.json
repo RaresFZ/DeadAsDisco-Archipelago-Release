@@ -1,0 +1,98 @@
+{
+  "session": "ap-cold-20261006b",
+  "status": "first-full-ap-round-trip-verified-restored",
+  "sources": {
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/session.json": "2a62abe18b80628db27879775e605d71cc7ab08308800571604d535012871dc0",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/installation-restored.json": "bde0046050d46359fcd81e55afd6036bde9caa3903c93900db7ad066fbe379f6",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/proxy-install.json": "c2fe4b6831468922a9761fa90788d65fdb7f3ab72520e909919457810ac563e9",
+    "artifacts/runtime/core-sessions/ap-cold-20261006b/ap-evidence.jsonl": "bfaea84b7eacded4b2a0905fa5f514299013ef8f4d6cc782f2697574c87d2262",
+    "artifacts/ap-slice/ap-vertical-20261005a/reconnect-proofs/ap-cold-20261006b/cold/result.json": "492e264963be2e3d3ed00c7ad098330c77209a9f484d3d0b40770b70871c177d",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGames/PagodaGP_Main.sav": "64c8140cf3cbefba345890511178da7bfe601158afdf1b4e9434344c73a0f426",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGames/PagodaPT_M_0.sav": "57d3fbc04577722a7c5e69ca68424909365c5eabf18d26814056bcfee7efabde",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaGP_Main-backup-0.sav": "2e35437b3c9c197df7aacaeaf23f42f6e1fd099646d2e5db84b3f0d6dae2ff0b",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaGP_Main-backup-1.sav": "409de0b338c81c15bb7dbc706f1ec69886259d9ab35b7d354ee72075b9e1fbc0",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaGP_Main-backup-2.sav": "85b76124116e3baab09046394e66bf01164ab2cc1a8e61e5f2631aa0e3f3b00f",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaPT_M_0-backup-0.sav": "d78aec491e2755576bdb91c154c88e6c1c8491e02063322cf1c5099cdeb8e7d1",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaPT_M_0-backup-1.sav": "4ae53812f7a101ae8c45b602601418cc2ef276f44b4ddfd74b74c546cd6dd559",
+    "artifacts/runtime/save-sessions/ap-bridge-20261005c/test-after/SaveGamesBackup/PagodaPT_M_0-backup-2.sav": "c96267c0fcbe236779a29720cd8e763f1ba8677699001f749660a4c6130e8e25",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGames/PagodaGP_Main.sav": "f048174d2e5efc278f116489d770d87eba2b1aca77542f9e8aea68802b57c0f3",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGames/PagodaPT_M_0.sav": "2e8bc90514f23ffe312ab41fc22771b3533257a35fe75090555c9535d27fda17",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaGP_Main-backup-0.sav": "e3c9fe2edb472f66be9e04600f7617e972b2dcb1211e06958882dd2bc4266c1e",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaGP_Main-backup-1.sav": "409de0b338c81c15bb7dbc706f1ec69886259d9ab35b7d354ee72075b9e1fbc0",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaGP_Main-backup-2.sav": "85b76124116e3baab09046394e66bf01164ab2cc1a8e61e5f2631aa0e3f3b00f",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaPT_M_0-backup-0.sav": "0fc1ef92b3a2874ddb88521f8f0bf39cacfc452366a6eab0c0f71069c740fba3",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaPT_M_0-backup-1.sav": "4ae53812f7a101ae8c45b602601418cc2ef276f44b4ddfd74b74c546cd6dd559",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after/SaveGamesBackup/PagodaPT_M_0-backup-2.sav": "c96267c0fcbe236779a29720cd8e763f1ba8677699001f749660a4c6130e8e25",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/test-after-manifest.json": "196f94b46fcd2752e22622bd332dc394918fa19073ab5bf83827b1af4cee11e6",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/game.log": "e00551996692bf4c71eba20f68d4d22d89a33f0f271ac929a4b7a913ad118e08",
+    "artifacts/runtime/save-sessions/ap-cold-20261006b/windows-events.json": "155d0fedb2341b2011482fb7a425dcd9449345848abc891cdb81f7309b51b376"
+  },
+  "saves": [
+    {
+      "save": "PagodaGP_Main.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaPT_M_0.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaGP_Main-backup-0.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaGP_Main-backup-1.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaGP_Main-backup-2.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaPT_M_0-backup-0.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaPT_M_0-backup-1.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    },
+    {
+      "save": "PagodaPT_M_0-backup-2.sav",
+      "unrelatedStateUnchanged": true,
+      "rotationAccounted": true
+    }
+  ],
+  "checks": {
+    "rebelReconciled": true,
+    "resubmitted": 0
+  },
+  "items": {
+    "stalwartOwned": true,
+    "equipped": true,
+    "coldMaxHealthDelta": 10,
+    "apApplied": 1,
+    "coldNativeGrants": 0
+  },
+  "safety": {
+    "originalsRestored": true,
+    "installationRestored": true,
+    "normalExit": true,
+    "windowsFaults": 0,
+    "d3d12GpuTimeouts": 0,
+    "streamlineGpuFenceWarnings": 0,
+    "vendorRecords": [],
+    "compatibilityBlocked": false
+  },
+  "limits": [
+    "Historical c CounterAttack/backup/log refusals are preserved. This cold copy is compared to its exact closed endpoint, with no combat inputs.",
+    "Shared AddOwnedUpgrade ownership mutation is supported; distinct effect/equip/slot/cosmetic/access/death mutations still need representative validation."
+  ],
+  "note": "Local absolute paths were reduced to workspace-relative paths when this snapshot was moved into the public repository; hashes and results are unchanged."
+}

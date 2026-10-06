@@ -1,0 +1,63 @@
+{
+  "title": "Fresh-profile Archipelago live validation (protected dadap sessions, profile ap1, seed ap-fresh-20261006a)",
+  "date": "2026-10-06",
+  "method": "dadap play on a brand-new AP profile (tutorial played in vanilla first), local AP server, all native families in protected test mode. Originals parked/restored byte-for-byte after every session (139 files verified).",
+  "vanilla_observation": {
+    "profile": "observe",
+    "findings": [
+      "All five missions are selectable at New Game; access hook only needs to remove missions.",
+      "Free starting skills: Double Time, Fever Rush, Let's Dance (Charlie).",
+      "Default-owned at start: 5 outfit items, 3 dances (incl. one debug-only dance); Tutorial and Lets Dance achievement complete during tutorial.",
+      "Beating Hemlock awards the Bass Invader power; Idol skill trees appear only after that Idol's boss is beaten.",
+      "Fresh save has 3 scope contexts (Global, Playthrough, GameLoop); some variables are created lazily; slot name PagodaPT_M_0."
+    ]
+  },
+  "verified_live": {
+    "node_purchase_is_check": "Buying Heavy Kick: credits spent, node shown purchased, node-interaction journaled, AP check sent+confirmed, native reward removed (unequip, reflected-set removal, no leaked applied effect).",
+    "skill_grant": "AP-delivered Heavy Kick natively granted and equipped via the native toggle; effect works in a mission and persists across title/Continue.",
+    "mission_access": "Only the starting mission playable at first; Arora Access delivered via AP unlocked Arora; persisted across reload.",
+    "power_award": "Beating Hemlock: vanilla power award journaled as the Bass Invader node check, slot gated; unreceived power could not be equipped; after AP delivery it equipped and fired in a mission.",
+    "traps": "Half Heart: exactly -5 HP, MaxHealth unchanged (two applications). Silence: attack/dodge/abilities inhibited 10 s, movement allowed, restored automatically.",
+    "deathlink_incoming": "Natural 5-HP damage hits across services drove 40->0; game death handler ran, normal death screen/Retry; remote death not echoed; no unearned mission completion.",
+    "deathlink_outgoing": "One local death produced exactly one outgoing DeathLink.",
+    "checks": "10 checks from Hemlock (completion on Easy, 1-3 stars, achievements, power node) submitted and confirmed; 13 hint/filler/etc items received and applied.",
+    "reconcile": "Ledger resumed across four sessions; entitlements published before launch prevent the startup removal race."
+  },
+  "defects_found_and_fixed_during_validation": [
+    "Startup removal of an already-received skill before the client connected (now: entitlements published from the ledger before launch).",
+    "GE_Healing_SetByCaller CDO shape refused; Half Heart/DeathLink now use the verified GE_Damage_SetByCaller (capped hits).",
+    "Native RemoveOwnedUpgrade re-grants other removed powers and the game re-grants powers on its own: powers are gated by slot/applied effect, skills removed via reflected set.",
+    "Grant did not equip: now equips through the native toggle like a vanilla purchase.",
+    "~80 ms/tick unmeasured asset-path scan: cached (median tick now 32 ms).",
+    "Client crash on Windows sharing violation during snapshot swap."
+  ],
+  "performance": {
+    "ticks": 730,
+    "median_ms": 32,
+    "p95_ms": 119,
+    "max_ms": 144,
+    "over_50_ms": 73,
+    "user_reported_freezes": "none noticed after the scan cache fix"
+  },
+  "not_validated": [
+    "Dex/Prophet/Dahlia access items (same mechanism as Arora, not individually exercised).",
+    "Silence cleanup on death/world transition (fixture-tested only).",
+    "Half Heart at very low health (fixture-tested nonlethal clamp).",
+    "Story victory goal on this profile (earlier protected run reported story victory).",
+    "Long soak (multi-hour) and boss-fight interactions with DeathLink."
+  ],
+  "release_package_run": {
+    "date": "2026-10-06",
+    "package": "DeadAsDiscoAP-0.4.0.zip (unpacked; production mode, no test flags)",
+    "steps": [
+      "dadap newprofile (tutorial only) on a brand-new profile",
+      "dadap play against the generated seed (template options, death_link on)"
+    ],
+    "results": [
+      "Launcher staged, launched offline, passed the network guard, issued the lease and attached the client with no manual steps.",
+      "Only the random starting mission (Hemlock) was playable.",
+      "Buying a Charlie node spent fans, showed purchased, sent the AP check, withheld the vanilla reward (not entitled), received a filler hint.",
+      "Originals restored byte-for-byte; no freezes reported."
+    ]
+  }
+}

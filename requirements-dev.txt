@@ -1,0 +1,2 @@
+pyinstaller==6.22.3
+lupa>=2.0

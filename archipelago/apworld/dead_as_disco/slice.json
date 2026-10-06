@@ -1,0 +1,24 @@
+{
+  "protocol": 1,
+  "game": "Dead as Disco",
+  "world_version": "0.1.0",
+  "pool": "protected_vertical_slice",
+  "locations": [{
+    "id": 3404260001,
+    "name": "Rebel Magazine Purchased",
+    "asset": "/Game/Pagoda/Collectibles/Trinkets/DA_Collectible_Trinkets_RebelMagazine",
+    "scope": "Progression.Scope.Playthrough",
+    "tag": "Progression.Memorabilia.Trinkets.Magazine.Rebel",
+    "predicate": "IsPurchased; selected persistent state equals 4",
+    "confidence": "Historical narrow predicate/persistence proof; production adapter validation pending"
+  }],
+  "items": [{
+    "id": 3404260101,
+    "name": "Stalwart Heart",
+    "asset": "/Game/Pagoda/Characters/Player/Upgrades/Prophet/PlayerUpgrade_Prophet_HealthUp",
+    "tag": "Progression.Unlockable.Upgrades.Prophet.HealthUp",
+    "classification": "progression",
+    "grant_candidate": "PagodaPlaythroughPlayerData.AddOwnedUpgrade(const GameplayTag& InId)",
+    "grant_validated": false
+  }]
+}

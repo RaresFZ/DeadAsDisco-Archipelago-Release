@@ -1,0 +1,27 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Set up development environment
+        run: python tools/setup-dev.py
+      - name: Python tests
+        run: .venv\Scripts\python.exe tools/ap-slice-dev.py Tests --run ci
+      - name: Lua fixtures
+        run: .venv\Scripts\python.exe tools/run-lua-tests.py
+      - name: Catalog check
+        run: node tools/test-ap-catalog.mjs
+      - name: Template is up to date
+        run: |
+          .venv\Scripts\python.exe tools/make-template.py
+          git diff --exit-code -- "archipelago/Dead as Disco.yaml"

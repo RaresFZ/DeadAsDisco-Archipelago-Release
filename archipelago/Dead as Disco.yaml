@@ -1,0 +1,446 @@
+# Q. What is this file?
+# A. This file contains options which allow you to configure your multiworld experience while allowing
+#    others to play how they want as well.
+#
+# Q. How do I use it?
+# A. The options in this file are weighted. This means the higher number you assign to a value, the
+#    more chances you have for that option to be chosen. For example, an option like this:
+#
+#    map_shuffle:
+#      on: 5
+#      off: 15
+#
+#    Means you have 5 chances for map shuffle to occur, and 15 chances for map shuffle to be turned
+#    off.
+#
+# Q. I've never seen a file like this before. What characters am I allowed to use?
+# A. This is a .yaml file. You are allowed to use most characters.
+#    To test if your yaml is valid or not, you can use this website:
+#        http://www.yamllint.com/
+#    You can also verify that your Archipelago options are valid at this site:
+#        https://archipelago.gg/check
+
+# Your name in-game, limited to 16 characters.
+#     {player} will be replaced with the player's slot number.
+#     {PLAYER} will be replaced with the player's slot number, if that slot number is greater than 1.
+#     {number} will be replaced with the counter value of the name.
+#     {NUMBER} will be replaced with the counter value of the name, if the counter value is greater than 1.
+name: Player{number}
+
+# Used to describe your yaml. Useful if you have multiple files.
+description: Dead as Disco randomizer
+
+# ---- Dead as Disco notes -----------------------------------------------------------------------
+# * The skill tree is an Archipelago SHOP: buying a node sends a check, the skill arrives from the multiworld.
+# * Theme groups work in exclude_locations / priority_locations (bottom of this file): Memorabilia, Challenges,
+#   Quests, Cosmetic Purchases, Dance Purchases, Story Completions, Achievements, Song Completions, Skill Nodes,
+#   Upgrade Nodes, Charlie Tree Nodes, Story Star Ratings, Song Star Ratings, Story Difficulty Checks,
+#   Song Difficulty Checks.  local_items / non_local_items accept: Idol Powers, Active Skills, Passive Upgrades,
+#   Mission Access, Traps, Filler.
+# * Filler items are Fan Packs (fans for the skill-tree shop) unless you lower fan_pack_percentage.
+# -------------------------------------------------------------------------------------------------
+game: Dead as Disco
+requires:
+  version: 0.6.8 # Version of Archipelago required for this yaml to work as expected.
+  game:
+    Dead as Disco: 0.5.5 # Version of the world required for this yaml to work as expected.
+
+Dead as Disco:
+  ################
+  # Game Options #
+  ################
+  progression_balancing:
+    # A system that can move progression earlier, to try and prevent the player from getting stuck and bored early.
+    # 
+    # A lower setting means more getting stuck. A higher setting means less getting stuck.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 99
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-99: 0 # random value between 0 and 99
+    disabled: 0 # equivalent to 0
+    normal: 50 # equivalent to 50
+    extreme: 0 # equivalent to 99
+
+  accessibility:
+    # Set rules for reachability of your items/locations.
+    # 
+    # **Full:** ensure everything can be reached and acquired.
+    # 
+    # **Minimal:** ensure what is needed to reach your goal can be acquired.
+    full: 50
+    minimal: 0
+
+  #####################
+  # Goal and Missions #
+  #####################
+  goal:
+    # What counts as finishing the game.
+    # 
+    # story: beat all five Idol missions.
+    # mission_count: beat the number of missions set by goal_count.
+    # challenges: complete the number of song challenges set by goal_count.
+    # memorabilia: collect the number of memorabilia set by goal_count.
+    # five_star_story: get 5 stars on every Idol mission.
+    # story_and_challenges: beat all five missions AND complete goal_count challenges.
+    story: 50
+    mission_count: 0
+    challenges: 0
+    memorabilia: 0
+    five_star_story: 0
+    story_and_challenges: 0
+
+  goal_count:
+    # How many missions / challenges / memorabilia the chosen goal needs. Only used by the goals that count things;
+    # a count that cannot be reached with your other options is rejected.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 148
+    5: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-148: 0 # random value between 1 and 148
+
+  shuffle_access:
+    # Lock the five missions behind Mission Access items sent by the multiworld.
+    # 
+    # You can play your starting mission from the beginning; the other four unlock when their Access item arrives.
+    'false': 0
+    'true': 50
+
+  starting_mission:
+    # The mission you can play from the start when Shuffle Mission Access is on. 'random' picks one per seed.
+    hemlock: 50
+    arora: 0
+    dex: 0
+    prophet: 0
+    dahlia: 0
+
+  ##########################################
+  # Shuffled Rewards (the skill tree shop) #
+  ##########################################
+  shuffle_skills:
+    # The skill tree becomes an Archipelago shop.
+    # 
+    # Buying a node sends a check (it can hold an item for anyone) and gives you nothing itself; the skill only arrives
+    # when the multiworld sends it, and is then equipped automatically.
+    'false': 0
+    'true': 50
+
+  shuffle_powers:
+    # The six Idol powers are shuffled. Beating an Idol sends its check; the power only arrives from the multiworld
+    # (until then it cannot be equipped or used).
+    'false': 0
+    'true': 50
+
+  shuffle_upgrades:
+    # The 29 passive upgrades are shuffled: buying their node sends a check, the upgrade arrives from the multiworld.
+    'false': 0
+    'true': 50
+
+  include_skills:
+    # Skill and power nodes are check locations.
+    'false': 0
+    'true': 50
+
+  include_upgrades:
+    # Passive upgrade nodes are check locations.
+    'false': 0
+    'true': 50
+
+  include_power_items:
+    # The Idol powers are items in the multiworld.
+    'false': 0
+    'true': 50
+
+  include_skill_items:
+    # The active skills are items in the multiworld.
+    'false': 0
+    'true': 50
+
+  include_upgrade_items:
+    # The passive upgrades are items in the multiworld.
+    'false': 0
+    'true': 50
+
+  ##########################
+  # What Counts as a Check #
+  ##########################
+  include_missions:
+    # Mission related checks (required by Shuffle Mission Access).
+    'false': 0
+    'true': 50
+
+  include_story:
+    # Beating each Idol's mission is a check (required by Shuffle Mission Access).
+    'false': 0
+    'true': 50
+
+  include_quests:
+    # Finishing character quests (item turn-ins) are checks.
+    'false': 0
+    'true': 50
+
+  include_challenges:
+    # Completing song challenges is a check.
+    'false': 0
+    'true': 50
+
+  include_memorabilia:
+    # Memorabilia are checks. Most count the moment you PICK THEM UP in a level or the hub; the rest when you buy them.
+    'false': 0
+    'true': 50
+
+  include_cosmetics:
+    # Buying clothing and dance moves is a check. The cosmetics themselves stay vanilla.
+    'false': 0
+    'true': 50
+
+  include_optional:
+    # The tutorial and the game's achievements are checks.
+    'false': 0
+    'true': 50
+
+  include_songs:
+    # Add the 36 shipped Infinite Disco songs: completing each, plus the star and difficulty milestones you selected
+    # (about 360 extra checks). Off by default because they make a seed much longer.
+    'false': 50
+    'true': 0
+
+  challenge_percentage:
+    # Share of the challenge checks that are used (1-100).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  memorabilia_percentage:
+    # Share of the memorabilia checks that are used (1-100).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  song_percentage:
+    # Share of the song checks that are used (1-100). Only matters if Song Checks is on.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  rank_checks:
+    # Star rating checks (the game records stars, not letter grades).
+    # 
+    # off: none.
+    # highest_only: only 5 stars.
+    # selected_thresholds: the star counts listed in star_thresholds.
+    # all_milestones: 1, 2, 3, 4 and 5 stars.
+    'off': 0
+    highest_only: 0
+    selected_thresholds: 50
+    all_milestones: 0
+
+  star_thresholds:
+    # Which star counts are checks when Star Rating Checks is selected_thresholds. Values: 1, 2, 3, 4, 5.
+    ['3', '5']
+
+  rank_percentage:
+    # Share of the selected star rating checks that are used (1-100).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  difficulty_checks:
+    # Completing a mission on an exact difficulty is a check. Values: Easy, Normal, Hard, Very Hard.
+    # Empty means none; a harder difficulty does not count for an easier one.
+    []
+
+  difficulty_percentage:
+    # Share of the selected difficulty checks that are used (1-100).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  ####################
+  # Filler and Traps #
+  ####################
+  fan_pack_percentage:
+    # How much filler is Fan Packs (fans you spend in the skill-tree shop) instead of Disco Hints.
+    # 100 means no Disco Hints at all. Fan Packs come in five sizes.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 100
+    100: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-100: 0 # random value between 0 and 100
+
+  fan_pack_amount:
+    # Fans in a normal Fan Pack. The five sizes are 1/4, 1/2, 1x, 2x and 4x of this.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 50
+    # Maximum value is 5000
+    500: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-50-5000: 0 # random value between 50 and 5000
+
+  traps:
+    # Turn some filler into temporary traps. Progression items are never replaced.
+    'false': 0
+    'true': 50
+
+  trap_percentage:
+    # Percent of the surplus filler that becomes traps.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 100
+    10: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-100: 0 # random value between 0 and 100
+
+  half_heart_trap_weight:
+    # How likely a trap is a Half Heart: you lose a little health once (never lethal, max health untouched).
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 100
+    1: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-100: 0 # random value between 0 and 100
+
+  silence_trap_weight:
+    # How likely a trap is Silence: for a few seconds you can run but cannot attack, dodge or use abilities.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 100
+    1: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-100: 0 # random value between 0 and 100
+
+  trap_duration:
+    # How many seconds the Silence trap lasts.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 60
+    10: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-60: 0 # random value between 1 and 60
+
+  #############
+  # DeathLink #
+  #############
+  death_link:
+    # When you die, everyone who enabled death link dies. Of course, the reverse is true too.
+    'false': 50
+    'true': 0
+
+  death_link_amnesty:
+    # Incoming DeathLinks to forgive (ignore) at the start of each play session.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 10
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-10: 0 # random value between 0 and 10
+
+  death_link_cooldown:
+    # Seconds after an accepted incoming DeathLink during which further ones are ignored.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 300
+    0: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-300: 0 # random value between 0 and 300
+
+  ###########################
+  # Item & Location Options #
+  ###########################
+  local_items:
+    # Forces these items to be in their native world.
+    []
+
+  non_local_items:
+    # Forces these items to be outside their native world.
+    []
+
+  start_inventory:
+    # Start with the specified amount of these items. Example: {Bomb: 1, Arrow: 3}
+    {}
+
+  start_hints:
+    # Start with these item's locations prefilled into the ``!hint`` command.
+    []
+
+  start_location_hints:
+    # Start with these locations and their item prefilled into the ``!hint`` command.
+    []
+
+  exclude_locations:
+    # Prevent these locations from having an important item.
+    []
+
+  priority_locations:
+    # Prevent these locations from having an unimportant item.
+    []
+
+  item_links:
+    # Share part of your item pool with other players.
+    []
+
+  plando_items:
+    # Generic items plando.
+    []
