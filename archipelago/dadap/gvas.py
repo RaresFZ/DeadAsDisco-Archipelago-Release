@@ -5,6 +5,9 @@ Output mirrors the JavaScript decoder exactly so both can be compared on real sa
 """
 import struct
 
+# Engine version stamped in the save header: the game build before (33649) and after (33836) the October 2026 update.
+# The property layout was checked against real saves written by both.
+SUPPORTED_ENGINES = {(5, 7, 4, 33649), (5, 7, 4, 33836)}
 SUPPORTED_CLASSES = {
     "PagodaGP_Main.sav": "/Script/Pagoda.PagodaGlobalProgressSaveGame",
     "PagodaPT_M_0.sav": "/Script/Pagoda.PagodaPlaythroughSaveGame",
@@ -214,7 +217,7 @@ def _properties(r, depth=0):
 
 def read_tagged_save(b, name):
     h = header(b)
-    if h["ue5"] != 1018 or h["engine"] != (5, 7, 4, 33649):
+    if h["ue5"] != 1018 or h["engine"] not in SUPPORTED_ENGINES:
         raise SaveError("Unsupported save header")
     if SUPPORTED_CLASSES.get(name) != h["save_class"]:
         raise SaveError("Only current global/playthrough progression saves are supported")

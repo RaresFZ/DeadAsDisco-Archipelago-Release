@@ -24,10 +24,10 @@ def diagnose(layout, probe, ap_root=None):
     exe = layout.exe
     if not exe.is_file():
         add("FAIL", "game", f"{pins.EXE_NAME} not found under {layout.game_dir}")
-    elif sha256_file(exe) != pins.EXE_SHA256:
-        add("FAIL", "game build", f"unsupported build; verified only for {pins.BUILD}")
+    elif sha256_file(exe) not in pins.supported_exe_hashes():
+        add("FAIL", "game build", f"unsupported build; supported: {pins.supported_builds_text()}")
     else:
-        add("OK", "game build", pins.BUILD)
+        add("OK", "game build", pins.PREVIOUS_BUILDS.get(sha256_file(exe), pins.BUILD))
     core = layout.core_dir
     if not (core / "UE4SS.dll").is_file():
         add("FAIL", "UE4SS core", "not installed; run: setup --ue4ss-archive <zip>")

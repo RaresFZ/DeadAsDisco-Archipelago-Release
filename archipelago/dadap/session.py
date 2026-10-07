@@ -107,8 +107,8 @@ def begin(layout, profile, probe, check_exe=True, sid=None, copy_source=None):
         raise SafetyError("An unfinished session exists. Run recover before starting another.")
     assert_closed(probe)
     if check_exe:
-        if not layout.exe.is_file() or sha256_file(layout.exe) != pins.EXE_SHA256:
-            raise SafetyError(f"Unsupported game build; verified only for {pins.BUILD}.")
+        if not layout.exe.is_file() or sha256_file(layout.exe) not in pins.supported_exe_hashes():
+            raise SafetyError(f"Unsupported game build; supported: {pins.supported_builds_text()}.")
     sid = sid or new_session_id()
     session_dir = layout.session_dir(sid)
     if session_dir.exists():

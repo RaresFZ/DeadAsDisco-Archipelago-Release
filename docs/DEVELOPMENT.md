@@ -101,6 +101,19 @@ Ideas, roughly in order:
 - Fan Tax trap (negative `AddCredits`), heal/fever filler, a check-density slider, Universal Tracker support, an Archipelago Launcher component.
 - Not possible or rejected: stamina trap (no stamina resource), cosmetic item shuffle (conflicts with purchase checks).
 
+## When the game updates
+
+The app only runs on the executables listed in `archipelago/dadap/pins.py` (`EXE_SHA256`, plus older builds in `PREVIOUS_BUILDS`); a
+different one is refused. After a Steam update (the hash and build id are in `steamapps\appmanifest_3404260.acf`):
+
+1. Check what changed. Extract the new build with the same offline tooling that produced the catalog (see the known gap above), compare
+   the archived `.ini` files, localization, string tables and the item/location assets byte for byte, and note whether tags,
+   save-variable names or class names moved. `archipelago/data/evidence/build-25772865-static-diff.json` is an example.
+2. If the data is unchanged the catalog and the world version stay as they are. If it changed, update `catalog.json` and bump the world version.
+3. Add the new hash to `pins.py` (`EXE_SHA256`; move the old one to `PREVIOUS_BUILDS`) and update `BUILD`.
+4. Run the whole app against the new build once with a test profile (PLAY, play for a few minutes in the hub and a mission, check the
+   console for `STATE ready` and no "bridge stopped itself") before publishing. UE4SS locates engine functions by signature, so a
+   rebuilt executable can break it even when no game data changed.
 ## Safety when testing live
 
 Never experiment on your real save. Use the app's profile mechanism (a dedicated profile per multiworld), keep Steam Cloud off, close

@@ -19,7 +19,7 @@ latest zip from the **Releases** page of this repository (the source code is for
 | | |
 |---|---|
 | A PC | Windows 10 or 11 |
-| The game | **Dead as Disco** on Steam, fully updated (the app only supports Steam build **25647873** and tells you if yours differs; don't use a beta branch) |
+| The game | **Dead as Disco** on Steam, fully updated (the app supports Steam builds **25772865** and **25647873** and tells you if yours differs; don't use a beta branch) |
 | The mod package | `DeadAsDiscoAP-<version>-windows.zip` (from the project's *Releases* page or from whoever invited you) |
 | A multiworld | Someone has to host it (see step 4; it can be you) |
 | About 1 GB free | On the drive where Windows keeps your user files |
@@ -111,7 +111,8 @@ Nothing stays installed in the game folder between sessions. If the PC crashes o
 | Problem | What to do |
 |---|---|
 | "Exit Steam completely" / waiting for Steam | Right-click the Steam tray icon > Exit; check Task Manager for `steam.exe` |
-| The app says the game build is different | Let Steam update the game; leave beta branches |
+| The app says the game build is different | Let Steam update the game and leave beta branches. If Steam just updated it, you may need a newer release of this app |
+| "The game bridge stopped itself" in the console | Quit the game and click Play again (your saves are safe). If it repeats, send the file named in that message (`%LOCALAPPDATA%\DeadAsDiscoAP\sessions\<id>\runtime\ap-refusal.txt`) |
 | Crash, power cut, or you closed the app mid-game | Open the app > **Recover saves** |
 | Not sure everything is fine | Click **Check install** and fix any line that is not OK |
 | The game will not connect | Check server address and slot name spelling, and that the host's server is running |
@@ -125,7 +126,7 @@ Logs: `%LOCALAPPDATA%\DeadAsDiscoAP\last-run.log` and each session's `...\sessio
 The exact numbers and every exclusion are in `FINAL_AUDIT.md`. In short: 50 song-related records are not checks (their song
 data cannot be tied to a visible/unlockable song), 11 records are free at New Game and cannot be checks, there is no stamina trap
 (the game has no stamina resource), and cosmetic and dance rewards are not shuffled (only their purchases are checks).
-The app needs the exact verified game build and Steam Cloud off. Fan Packs and the first-time tutorial restart are the least-tested parts.
+The app needs a supported game build (it refuses any other) and Steam Cloud off. Fan Packs and the first-time tutorial restart are the least-tested parts.
 
 ---
 

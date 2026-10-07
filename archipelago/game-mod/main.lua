@@ -177,8 +177,19 @@ end
 if deaths then deaths.start(config) end
 if nodes then nodes.start(config) end
 if access then access.start(config) end
+-- A service that takes long is usually just a slower PC or a heavy scene, not a fault: back off (skip a few ticks so the game
+-- keeps its frame rate) and only stop on a credible stall or a real error. The first slow tick of a hub load must never end a session.
+local SLOW_MS,STALL_MS,MAX_SKIPPED_TICKS=250,3000,3
+local skipTicks=0
+local function costSummary()
+    local rows={};for stage,ms in pairs(costs or {}) do rows[#rows+1]={stage,ms} end
+    table.sort(rows,function(a,b) return a[2]>b[2] end)
+    local parts={};for i=1,math.min(4,#rows) do parts[i]=rows[i][1]..'='..string.format('%.0f',rows[i][2])..'ms' end
+    return table.concat(parts,' ')
+end
 LoopInGameThreadWithDelay(2000,function()
     if stopped then return end
+    if skipTicks>0 then skipTicks=skipTicks-1;return end
     if busy then stopped=true;print('[APBridge] FAILED reentry\n');return end
     local now=os.time()
     if lastService and now-lastService>15 then stopped=true;emit({ready=false,reason='service-gap'});print('[APBridge] FAILED service-gap\n');return end
@@ -192,15 +203,22 @@ LoopInGameThreadWithDelay(2000,function()
     local logged,logError=pcall(append,{kind='callback-timing',stage=callbackStage,work_ms=workMs,
         costs=costs,clock='Windows CRT elapsed os.clock; not isolated CPU',observed_at=os.time(),ok=ok})
     local totalMs=(os.clock()-start)*1000
-    -- 50 ms is telemetry, not a correctness failure. Stop on a credible stall.
+    -- 50 ms is telemetry, not a correctness failure. Stop on a real error or a credible stall; merely slow ticks back off.
     if totalMs>50 then print('[APBridge] slow service '..tostring(totalMs)..' ms\n') end
-    if not ok or not logged or totalMs>250 then
+    local failure
+    if not ok then failure=err==nil and 'service raised an error without a message' or tostring(err)
+    elseif not logged then failure='evidence write failed: '..tostring(logError)
+    elseif totalMs>STALL_MS then failure='callback-time-budget (one service took '..string.format('%.0f',totalMs)..' ms)' end
+    if failure then
         stopped=true
         config.mutationsRefused=true
         if traps then traps.cleanup() end
         pending=nil
-        local f=io.open(config.refusal,'w');if f then f:write(tostring(err or logError or 'callback-time-budget'),
-            '\nwork_ms=',tostring(workMs),' total_ms=',tostring(totalMs),' telemetry_ms=',tostring((os.clock()-telemetryStart)*1000));f:close() end
+        local f=io.open(config.refusal,'w');if f then f:write(failure,
+            '\nstage=',tostring(callbackStage),' work_ms=',tostring(workMs),' total_ms=',tostring(totalMs),
+            ' telemetry_ms=',tostring((os.clock()-telemetryStart)*1000),'\ncosts: ',costSummary());f:close() end
         emit({ready=false,reason='refused'});print('[APBridge] FAILED bounded-read\n')
+    elseif totalMs>SLOW_MS then
+        skipTicks=math.min(MAX_SKIPPED_TICKS,math.floor(totalMs/SLOW_MS))
     end
 end)

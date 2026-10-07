@@ -166,9 +166,10 @@ def _watch_bridge(path, stop, log):
     """Tell the player when the in-game bridge stopped itself, instead of silently doing nothing."""
     while not stop.wait(5):
         if Path(path).is_file():
-            reason = Path(path).read_text(encoding="utf-8", errors="replace").strip().splitlines()[0:1]
-            log("!!! The game bridge stopped itself (" + (reason[0][-160:] if reason else "unknown reason") +
-                "). Checks and items are paused. Your saves are safe: quit the game and click Play again.")
+            lines = [line.strip() for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+            reason = " | ".join(lines)[-400:] if lines else "unknown reason"
+            log(f"!!! The game bridge stopped itself ({reason}). Checks and items are paused. Your saves are safe: quit the game and "
+                f"click Play again. If it keeps happening, send the file {path}.")
             return
 
 

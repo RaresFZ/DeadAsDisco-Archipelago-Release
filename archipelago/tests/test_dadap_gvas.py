@@ -1,5 +1,6 @@
 import json
 import shutil
+import struct
 import subprocess
 import unittest
 from pathlib import Path
@@ -10,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SAVES = [
     ROOT / "artifacts/private-saves/a/SaveGames",
     ROOT / "artifacts/private-saves/b/SaveGames",
+    ROOT / "artifacts/private-saves/c/SaveGames",  # written by game build 25772865 (engine changelist 33836)
+    ROOT / "artifacts/private-saves/d/SaveGames",
 ]
 
 
@@ -24,6 +27,27 @@ def python_summary(path):
         out["owned"] = sorted(gvas.tag(x) for x in gvas.field(data, "OwnedUpgrades"))
         out["equipped"] = sorted(gvas.tag(x) for x in gvas.field(data, "EquippedUpgrades"))
     return out
+
+
+def minimal_save(changelist, save_class="/Script/Pagoda.PagodaPlaythroughSaveGame"):
+    """An empty but well-formed GVAS save stamped with the given engine changelist (no game data)."""
+    def fstring(text):
+        raw = text.encode() + b"\0"
+        return struct.pack("<i", len(raw)) + raw
+    return (b"GVAS" + struct.pack("<iii", 3, 522, 1018) + struct.pack("<HHH", 5, 7, 4) + struct.pack("<I", changelist)
+            + fstring("++brainjar+release") + struct.pack("<ii", 3, 0) + fstring(save_class)
+            + b"\0" + fstring("None") + struct.pack("<I", 0))
+
+
+class SaveHeaderTests(unittest.TestCase):
+    def test_saves_from_both_game_builds_are_readable(self):
+        # 33649 = Steam build 25647873, 33836 = build 25772865 (the game rewrote every save with the new stamp).
+        for changelist in (33649, 33836):
+            self.assertEqual(gvas.read_tagged_save(minimal_save(changelist), "PagodaPT_M_0.sav")["properties"], [], changelist)
+
+    def test_an_unknown_engine_build_is_refused(self):
+        with self.assertRaises(gvas.SaveError):
+            gvas.read_tagged_save(minimal_save(99999), "PagodaPT_M_0.sav")
 
 
 class GvasParityTests(unittest.TestCase):

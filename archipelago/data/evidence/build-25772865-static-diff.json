@@ -1,0 +1,62 @@
+{
+  "from": {
+    "steam_build": 25647873,
+    "engine": "5.7.4 ++brainjar+release-CL-33649",
+    "exe_sha256": "be96d13e96b9fdd50d6171f294b1f8b7fddfae672bfc934336ad695b3c827366"
+  },
+  "to": {
+    "steam_build": 25772865,
+    "engine": "5.7.4 ++brainjar+release-CL-33836",
+    "exe_sha256": "81157164f458d8afea1addc04298c7d829c10ddcdacbe65228d5e571f4e2fc51"
+  },
+  "method": "Offline CUE4Parse extraction (read-only) of the same 1098 selected gameplay packages, the archived .ini files, the English localization, the string tables and the asset registry; byte-for-byte SHA-256 comparison against the extraction of 25647873.",
+  "mounted_files": {
+    "before": 28807,
+    "after": 28808
+  },
+  "path_comparison": "case-insensitive (Unreal paths are); ~3.1 thousand files only changed the letter case of a folder or file name, e.g. DiveBar -> DIVEBAR",
+  "files_added": [
+    "pagoda/content/pagoda/characters/common/effects/ge_damageimmune.uasset"
+  ],
+  "files_removed": [],
+  "files_with_a_different_size": {
+    "count": 169,
+    "by_extension": {
+      ".bin": 1,
+      ".uasset": 161,
+      ".ubulk": 5,
+      ".umap": 2
+    },
+    "note": "Almost all are re-cooked meshes, materials, animations and levels."
+  },
+  "extracted_files_compared": {
+    "identical": 1398,
+    "different": 50,
+    "by_extension_in_set": {
+      ".bin": 1,
+      ".uproject": 1,
+      ".ini": 119,
+      ".uplugin": 243,
+      ".uasset": 803,
+      ".umap": 279,
+      ".locres": 1,
+      ".csv": 1
+    }
+  },
+  "different_non_level_assets": [
+    "Pagoda/AssetRegistry.bin",
+    "Pagoda/Content/Pagoda/Characters/Enemies/Grunt/Abilities/GA_Enemy_Grunt_Attack.uasset",
+    "Pagoda/Content/Pagoda/Characters/Player/Abilities/Counter/GA_CounterAttack.uasset",
+    "Pagoda/Content/Pagoda/Gameplay/GameplaySegments/GA_GameplaySegment_Base.uasset",
+    "Pagoda/Content/Pagoda/Levels/Dancer/GameplayMoments/GA_GS_Dancer_TransitionToBossCard.uasset"
+  ],
+  "different_levels": 45,
+  "identical": [
+    "every archived .ini configuration file (119)",
+    "English localization (Game.locres)",
+    "string tables",
+    "all item/skill/upgrade definitions, collectible definitions, quest and mission assets, save classes in the selected set"
+  ],
+  "conclusion": "Gameplay data used by the catalog (tags, items, locations, save-variable schema) is unchanged. The update touches combat and boss behaviour (GA_AttackBase, GA_BasicAttack_DodgeFollowup, GA_CounterAttack, Dancer PantherEyes, GA_GameplaySegment_Base, input mapping, a new GE_DamageImmune effect) and re-cooks many levels. No catalog change is required.",
+  "not_established": "Static comparison only. UE4SS signature scanning and the bridge behaviour on the new executable, and any interaction of the new GE_DamageImmune effect with Half Heart/DeathLink, are confirmed only by running the game (see docs/DEVELOPMENT.md)."
+}

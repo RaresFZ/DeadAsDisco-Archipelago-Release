@@ -28,7 +28,7 @@ export function saveHeader(b) {
 }
 export function readTaggedSave(b,name){
  const h=saveHeader(b),schema=[];
- if(!h.gvas||h.ue5PackageVersion!==1018||h.engine.major!==5||h.engine.minor!==7||h.engine.patch!==4||h.engine.changelist!==33649||h.classParseError)throw Error('Unsupported save header');
+ if(!h.gvas||h.ue5PackageVersion!==1018||h.engine.major!==5||h.engine.minor!==7||h.engine.patch!==4||![33649,33836].includes(h.engine.changelist)||h.classParseError)throw Error('Unsupported save header');
  const classes={ 'PagodaGP_Main.sav':'/Script/Pagoda.PagodaGlobalProgressSaveGame', 'PagodaPT_M_0.sav':'/Script/Pagoda.PagodaPlaythroughSaveGame' };
  if(h.saveClass!==classes[name])throw Error('Only current global/playthrough progression saves are supported');
  class Reader{

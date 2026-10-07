@@ -81,6 +81,22 @@ onScopeRead=function() saves.PlaythroughPlayerData=replacement end
 poll();assert(rows[#rows]:find('FAILED',1,true),'Lost direct-owner change guard')
 onScopeRead=nil;saves.PlaythroughPlayerData=data
 fresh();poll();put(config.control,'stop\n');before=reads;poll();poll();assert(reads==before)
+-- A slow PC or a heavy scene must back off, never end the session; only a credible stall or a real error stops the bridge.
+local realClock,fakeNow=os.clock,0
+os.clock=function() return fakeNow end
+local function refusalText() local f=assert(io.open(config.refusal,'r'));local t=f:read('a');f:close();return t end
+local function slowTick(ms) onScopeRead=function() fakeNow=fakeNow+ms/1000 end end
+fresh();poll();poll();poll();assert(rows[#rows]:find('STATE ready',1,true))
+slowTick(400);poll();assert(not rows[#rows]:find('FAILED',1,true),'One slow tick ended the session')
+local sc=scopeReads;poll();assert(scopeReads==sc,'Slow tick did not back off');poll();assert(scopeReads==sc+1,'Did not resume after backing off')
+poll();poll();poll();poll();assert(not rows[#rows]:find('FAILED',1,true),'Repeated slow ticks ended the session')
+fresh();poll();poll();poll();slowTick(3500);poll()
+assert(rows[#rows]:find('FAILED',1,true),'A credible stall did not stop the bridge')
+assert(refusalText():find('callback-time-budget',1,true) and refusalText():find('stage=',1,true),'Stall reason missing')
+onScopeRead=function() error() end
+fresh();poll();poll();poll();poll();assert(rows[#rows]:find('FAILED',1,true),'Error without a message did not stop the bridge')
+assert(refusalText():find('without a message',1,true) and not refusalText():find('callback-time-budget',1,true),'Nil error mislabelled as a time budget')
+onScopeRead=nil;os.clock=realClock
 -- The actual scheduler must not combine preparation, native call and post-read.
 config.phase3Enabled=true
 local prepared,dispatched,completed=0,0,0
