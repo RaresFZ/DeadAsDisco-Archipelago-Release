@@ -5,11 +5,11 @@ import queue
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from . import doctor, play, session
 from .fsutil import SafetyError
-from .layout import Layout
+from .layout import Layout, is_game_dir, remember_game_dir
 
 TITLE = "Dead as Disco - Archipelago"
 HELP = ("Type the Server, Slot name and Password (ask whoever hosts), then click Play.\n"
@@ -111,8 +111,9 @@ class App:
     def _save(self):
         try:
             self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-            self.settings_path.write_text(json.dumps({"server": self.server.get().strip(), "slot": self.slot.get().strip(),
-                                                      "cloud_off": bool(self.cloud.get())}), encoding="utf-8")
+            settings = self._load()  # keep what other code stored (the chosen game folder)
+            settings.update({"server": self.server.get().strip(), "slot": self.slot.get().strip(), "cloud_off": bool(self.cloud.get())})
+            self.settings_path.write_text(json.dumps(settings), encoding="utf-8")
         except OSError:
             pass
 
@@ -179,7 +180,32 @@ class App:
         self.run("Recover saves", work)
 
 
+def choose_layout(root, default=Layout.default, ask=filedialog.askdirectory, warn=messagebox.showwarning):
+    """The layout for this PC. When the game cannot be found by itself, ask for its folder (and remember it) instead of crashing."""
+    try:
+        return default()
+    except FileNotFoundError:
+        pass
+    warn(TITLE, "Dead as Disco was not found automatically.\n\nPlease pick the game folder: the one that contains the "
+         "folder named Pagoda (Steam > Library > right-click the game > Manage > Browse local files).")
+    while True:
+        chosen = ask(parent=root, title="Select the Dead as Disco folder")
+        if not chosen:
+            return None
+        if is_game_dir(chosen):
+            layout = default(chosen)
+            try:
+                remember_game_dir(layout.state_dir, chosen)
+            except OSError:
+                pass
+            return layout
+        warn(TITLE, "That folder is not the Dead as Disco install (it must contain Pagoda\\Binaries\\Win64).\nTry again.")
+
+
 def main():
     root = tk.Tk()
-    App(root)
+    layout = choose_layout(root)
+    if layout is None:
+        return
+    App(root, layout)
     root.mainloop()
