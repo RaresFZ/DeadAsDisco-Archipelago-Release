@@ -116,6 +116,7 @@ Nothing stays installed in the game folder between sessions. If the PC crashes o
 | Crash, power cut, or you closed the app mid-game | Open the app > **Recover saves** |
 | Not sure everything is fine | Click **Check install** and fix any line that is not OK |
 | The game will not connect | Check server address and slot name spelling, and that the host's server is running |
+| "CERTIFICATE_VERIFY_FAILED" / "certificate has expired" | Update to release 0.5.10 or newer. If it still happens, check that the PC's date, time and time zone are correct (Windows Settings > Time & language > *Sync now*) |
 | You want everything removed | Delete `%LOCALAPPDATA%\DeadAsDiscoAP` (profiles and backups included) and the extracted folder |
 
 Logs: `%LOCALAPPDATA%\DeadAsDiscoAP\last-run.log` and each session's `...\sessions\<id>\core\UE4SS.log`.

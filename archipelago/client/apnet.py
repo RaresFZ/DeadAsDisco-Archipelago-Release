@@ -186,20 +186,52 @@ class NetContext:
 def _urls(address):
     if "://" in address:
         return [address]
+    host = address.rsplit(":", 1)[0] if ":" in address.rsplit("]", 1)[-1] else address
     if ":" not in address.rsplit("]", 1)[-1]:
         address += ":38281"
+    if host.lower().endswith("archipelago.gg"):
+        return ["wss://" + address, "ws://" + address]  # the public server only speaks TLS
     return ["ws://" + address, "wss://" + address]
+
+
+def _tls_contexts():
+    """TLS settings to try in order: the Windows certificate store, then the bundled Mozilla roots.
+
+    Some PCs have an out-of-date or broken Windows store ("certificate has expired" for a valid server); the bundled
+    roots are independent of it. Both verify the server and its host name.
+    """
+    import ssl
+    yield ssl.create_default_context()
+    try:
+        import certifi
+        yield ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # noqa: BLE001 - no bundled roots available: the system store was the only option
+        return
+
+
+async def _connect(url):
+    """websockets connection to `url`; for wss:// retries with the bundled roots when the system store rejects the server."""
+    from websockets.asyncio.client import connect
+    if not url.startswith("wss://"):
+        return await connect(url, max_size=None, open_timeout=10)
+    import ssl
+    error = None
+    for context in _tls_contexts():
+        try:
+            return await connect(url, max_size=None, open_timeout=10, ssl=context)
+        except ssl.SSLCertVerificationError as caught:
+            error = caught
+    raise error if error else ConnectionError("TLS unavailable")
 
 
 async def server_loop(ctx, address, retry_delay=5.0):
     """Connect, pump packets and reconnect until ctx.exit_event is set."""
-    from websockets.asyncio.client import connect
     while not ctx.exit_event.is_set():
         for url in _urls(address):
             if ctx.exit_event.is_set():
                 break
             try:
-                async with connect(url, max_size=None, open_timeout=10) as ws:
+                async with await _connect(url) as ws:
                     ctx.ws = ws
                     async for raw in ws:
                         for packet in json.loads(raw):
@@ -209,6 +241,9 @@ async def server_loop(ctx, address, retry_delay=5.0):
                 raise
             except Exception as error:  # noqa: BLE001 - any transport/protocol failure means "reconnect"
                 log.warning("Connection to %s failed: %s", url, error)
+                if "CERTIFICATE_VERIFY_FAILED" in str(error):
+                    log.warning("The server's security certificate was rejected. Check that this PC's date and time are correct "
+                                "(Windows Settings > Time & language), then try again.")
             finally:
                 ctx.reset_connection_state()
         try:
