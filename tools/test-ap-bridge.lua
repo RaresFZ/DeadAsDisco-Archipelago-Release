@@ -45,14 +45,33 @@ print=function(s) rows[#rows+1]=s end
 EngineTickAvailable=true
 local list={saves};local authorityScans=0
 FindAllOf=function(c) assert(c=='PagodaGameSavesSubsystem');authorityScans=authorityScans+1;return list end
-LoopInGameThreadWithDelay=function(delay,fn) assert(delay==2000);poll=fn end
+-- Fake clock: every poll() is one loop wake-up and advances `step` seconds (the loop wakes every second; 2 is the busy cadence).
+local fakeNow,step=0,2
+local realClock=os.clock
+os.clock=function() return fakeNow end
+LoopInGameThreadWithDelay=function(delay,fn) assert(delay==1000);poll=function() fakeNow=fakeNow+step;return fn() end end
+config.entitlementFile=root..'-entitled';put(config.entitlementFile,'')
 local function fresh()
- put(config.sessionFile,'{"status":"isolated"}');put(config.parkedSave,'original fixture');put(config.lease,'token\n');put(config.control,'')
+ put(config.entitlementFile,'');put(config.sessionFile,'{"status":"isolated"}');put(config.parkedSave,'original fixture');put(config.lease,'token\n');put(config.control,'')
  rows={};dofile('archipelago/game-mod/main.lua')
 end
 fresh();poll();assert(scopeReads==0);poll();poll();assert(rows[#rows]:find('STATE ready',1,true));assert(predicateReads==1)
 local scans=authorityScans
-poll();assert(predicateReads==1,'Repeated native predicate');assert(authorityScans==scans+1,'Redundant authority census returned')
+poll();assert(authorityScans==scans,'Idle ready tick with unchanged control files must be skipped')
+put(config.entitlementFile,'Tag.Changed\n');poll()
+assert(authorityScans==scans+1,'A changed watched file must run the next wake-up immediately')
+poll();assert(authorityScans==scans+1,'Idle skip resumes after a full tick')
+poll();assert(predicateReads==1,'Repeated native predicate');assert(authorityScans==scans+2,'Redundant authority census returned')
+-- Timer-only idle ticks reuse the progression traversal twice (still re-checking identity/ownership/anchors); the third reads fresh.
+step=4;local traversals=scopeReads
+poll();assert(scopeReads==traversals,'Second idle tick must reuse the traversal');assert(rows[#rows]:find('STATE ready',1,true))
+poll();assert(scopeReads==traversals+1,'Third idle tick must read the progression traversal again')
+-- A one-second wake-up is cheap and does nothing; a changed watched file is noticed at the very next wake-up.
+step=1;local scansNow=authorityScans
+poll();poll();assert(authorityScans==scansNow,'Idle one-second wake-ups must not run a service')
+put(config.entitlementFile,'Tag.Changed.Again\n');poll()
+assert(authorityScans==scansNow+1 and scopeReads==traversals+2,'A changed file runs a full service with a fresh traversal at once')
+step=2
 -- Title rejects containers; natural reload repeats authority/native join.
 saves.GetWorld=function() return title end;saves.CurrentPlaythroughSlotName=wrap('FString','')
 local n=scopeReads;poll();poll();assert(scopeReads==n)
@@ -82,21 +101,22 @@ poll();assert(rows[#rows]:find('FAILED',1,true),'Lost direct-owner change guard'
 onScopeRead=nil;saves.PlaythroughPlayerData=data
 fresh();poll();put(config.control,'stop\n');before=reads;poll();poll();assert(reads==before)
 -- A slow PC or a heavy scene must back off, never end the session; only a credible stall or a real error stops the bridge.
-local realClock,fakeNow=os.clock,0
-os.clock=function() return fakeNow end
+local touched=0
+local function touch() touched=touched+1;put(config.entitlementFile,'Tag.Touch.'..touched..'\n') end -- forces a non-idle (fresh) service
 local function refusalText() local f=assert(io.open(config.refusal,'r'));local t=f:read('a');f:close();return t end
 local function slowTick(ms) onScopeRead=function() fakeNow=fakeNow+ms/1000 end end
 fresh();poll();poll();poll();assert(rows[#rows]:find('STATE ready',1,true))
-slowTick(400);poll();assert(not rows[#rows]:find('FAILED',1,true),'One slow tick ended the session')
-local sc=scopeReads;poll();assert(scopeReads==sc,'Slow tick did not back off');poll();assert(scopeReads==sc+1,'Did not resume after backing off')
+poll() -- the idle wake-up after a ready tick is skipped
+slowTick(400);touch();poll();assert(not rows[#rows]:find('FAILED',1,true),'One slow tick ended the session')
+local sc=scopeReads;poll();poll();assert(scopeReads==sc,'Slow tick did not back off');touch();poll();assert(scopeReads==sc+1,'Did not resume after backing off')
 poll();poll();poll();poll();assert(not rows[#rows]:find('FAILED',1,true),'Repeated slow ticks ended the session')
-fresh();poll();poll();poll();slowTick(3500);poll()
+onScopeRead=nil;fresh();poll();poll();poll();poll();slowTick(3500);touch();poll()
 assert(rows[#rows]:find('FAILED',1,true),'A credible stall did not stop the bridge')
 assert(refusalText():find('callback-time-budget',1,true) and refusalText():find('stage=',1,true),'Stall reason missing')
 onScopeRead=function() error() end
 fresh();poll();poll();poll();poll();assert(rows[#rows]:find('FAILED',1,true),'Error without a message did not stop the bridge')
 assert(refusalText():find('without a message',1,true) and not refusalText():find('callback-time-budget',1,true),'Nil error mislabelled as a time budget')
-onScopeRead=nil;os.clock=realClock
+onScopeRead=nil
 -- The actual scheduler must not combine preparation, native call and post-read.
 config.phase3Enabled=true
 local prepared,dispatched,completed=0,0,0

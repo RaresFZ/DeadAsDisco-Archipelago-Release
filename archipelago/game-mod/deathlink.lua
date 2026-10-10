@@ -49,6 +49,8 @@ function M.start(config)
     end)
 end
 function M.invalidate() lastWorld=nil;remotePending=nil;killRequest=nil end
+-- A kill request lands one capped hit per service; it must not be slowed down.
+function M.busy() return killRequest~=nil end
 function M.service(config,boundary)
     if not config.deathLinkEnabled then return nil end
     lastWorld=boundary.world

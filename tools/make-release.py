@@ -35,6 +35,7 @@ def build_app():
     if (APP / "dist").exists():
         shutil.rmtree(APP / "dist")
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir", "--windowed", "--name", "DeadAsDiscoAP",
+                    "--icon", str(ROOT / "archipelago/dadap/webui/icon.ico"),
                     "--paths", str(ROOT), "--hidden-import", "websockets.asyncio.client", "--distpath", str(APP / "dist"),
                     "--workpath", str(APP / "work"), "--specpath", str(APP), str(ROOT / "tools/dadap_app.py")],
                    check=True, cwd=ROOT)
@@ -75,6 +76,13 @@ def main():
                    "release_version": args.version, "world_version": world_version, "evidence": CERT_EVIDENCE, "sources": pinned}
     # The certificate pins the client source too; ship it as data so the pin is checkable on the player machine.
     data["archipelago/client/production.py"] = ROOT / "archipelago/client/production.py"
+    # The launcher window: a local web page (HTML, CSS, fonts) shown in an Edge/Chrome app window.
+    for page in sorted((ROOT / "archipelago/dadap/webui").rglob("*")):
+        if page.is_file():
+            data["archipelago/dadap/webui/" + page.relative_to(ROOT / "archipelago/dadap/webui").as_posix()] = page
+    # Pixel fonts of the app window (SIL Open Font License), loaded privately by the app from the data folder.
+    for font in sorted((ROOT / "archipelago/dadap/assets/fonts").glob("*")):
+        data[f"archipelago/dadap/assets/fonts/{font.name}"] = font
     top = {"README.md": ROOT / "README.md",
            "FINAL_AUDIT.md": ROOT / "docs/FINAL_AUDIT.md", "LICENSE": ROOT / "LICENSE",
            "THIRD_PARTY_NOTICES.md": ROOT / "THIRD_PARTY_NOTICES.md"}

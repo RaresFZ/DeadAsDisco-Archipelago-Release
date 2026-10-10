@@ -1,0 +1,3 @@
+﻿Fonts used by the app window (loaded privately by the app; nothing is installed on the PC).
+Press Start 2P (CodeMan38), Silkscreen (Jason Kottke) and JetBrains Mono (JetBrains) are all distributed under the SIL Open Font
+License 1.1 (full text in OFL-PressStart2P.txt, the same license text applies to the other two).

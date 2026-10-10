@@ -70,6 +70,6 @@ def diagnose(layout, probe, ap_root=None):
         for profile in sorted(p for p in profiles.iterdir() if p.is_dir()):
             binding = profile / "binding.json"
             bound = f"bound to seed {read_json(binding)['seed']}" if binding.is_file() else "not bound yet"
-            has_save = (profile / "Saved/SaveGames/PagodaPT_M_0.sav").is_file()
-            add("OK", f"profile {profile.name}", f"{'has a save' if has_save else 'no save yet'}, {bound}")
+            has_save = (profile / "Saved/SaveGames/PagodaPT_M_0.sav").is_file() and (profile / "Saved/SaveGames/PagodaGP_Main.sav").is_file()
+            add("OK", f"profile {profile.name}", f"{'has a save' if has_save else 'no complete tutorial save yet (press PLAY to play it)'}, {bound}")
     return results

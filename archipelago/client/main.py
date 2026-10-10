@@ -128,6 +128,7 @@ async def run(args):
                         or slot_data.get("content_sha256") != content_hash):
                     raise ReconciliationError("Unsupported AP slot data")
                 contract = SlotContract(content, slot_data)
+                status["locations_total"] = len(contract.locations)  # shown by the launcher window as checks done / total
                 if protection:
                     capability_keys={'ownership':('grants_enabled',),
                         'node-interaction':('node_locations_validated','node_locations_test'),

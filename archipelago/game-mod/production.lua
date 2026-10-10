@@ -5,19 +5,36 @@ local plain=require('plain-json')
 local M={}
 local seen,attempted='',{}
 local intent
--- Asset lookup by path is expensive (~2 ms each, ~48 items). Definitions only load/unload around
--- level transitions, so a short-lived cache of plain tag strings is enough; an in-flight grant refreshes it.
-local cache,cachedAt
-function M.available(config,force)
-    if not force and cache and os.clock()-cachedAt<20 then return cache end
-    local tags={}
-    for _,row in pairs(config.productionItems or {}) do
-        local d=StaticFindObject(row.asset)
-        if d:IsValid() then tags[#tags+1]=row.tag end
+-- Asset lookup by path is expensive (~2-8 ms each on a slow PC, ~48 items: a 400 ms freeze when all were scanned at once).
+-- Only a received (entitled) item the game does not own yet can be waiting for a grant, so only those are looked up, a few
+-- per tick, with a per-tag cache. A tag missing from the list is simply retried by the client on the next snapshot.
+local looked={}
+local assets,assetsFrom
+local LOADED_TTL,UNLOADED_TTL,MAX_LOOKUPS=20,6,6
+function M.available(config,owned)
+    if assetsFrom~=config.productionItems then
+        assets,assetsFrom,looked={},config.productionItems,{}
+        for _,row in pairs(config.productionItems or {}) do assets[row.tag]=row.asset end
     end
-    table.sort(tags);cache,cachedAt=tags,os.clock()
+    local have={};for _,t in ipairs(owned or {}) do have[t]=true end
+    local now,lookups,tags=os.clock(),0,{}
+    local text=config.entitlementFile and plain.read(config.entitlementFile) or ''
+    for tag in text:gmatch('[^\r\n]+') do
+        local asset=assets[tag]
+        if asset and not have[tag] then
+            local entry=looked[tag]
+            if (not entry or now-entry.at>(entry.loaded and LOADED_TTL or UNLOADED_TTL)) and lookups<MAX_LOOKUPS then
+                lookups=lookups+1
+                entry={loaded=StaticFindObject(asset):IsValid(),at=now};looked[tag]=entry
+            end
+            if entry and entry.loaded then tags[#tags+1]=tag end
+        end
+    end
+    table.sort(tags)
     return tags
 end
+-- True while a grant is prepared and waiting for its native call (the next service must not be delayed).
+function M.busy() return intent~=nil end
 local function definition(config,id)
     local row=assert(config.productionItems[tostring(id)],'Unknown production item')
     local d=StaticFindObject(row.asset)

@@ -24,6 +24,7 @@ local function restore()
     active=nil
 end
 function M.cleanup() restore() end
+function M.busy() return active~=nil end
 function M.service(config,boundary)
     configForEvidence=config
     if active and (os.time()>=active.untilTime or not boundary or boundary.world~=active.world) then restore() end

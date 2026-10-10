@@ -1,0 +1,2 @@
+﻿Oswald (Vernon Adams, Kalapi Gajjar, Cyreal) and Roboto Condensed (Christian Robertson) are served from this folder to the launcher window.
+Both are distributed under the SIL Open Font License 1.1 (text: archipelago/dadap/assets/fonts/OFL-PressStart2P.txt, the same license).

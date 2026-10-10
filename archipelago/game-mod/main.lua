@@ -17,6 +17,7 @@ local previous,lastState,lastService=nil,nil,nil
 local requestSeen=''
 local pending
 local callbackStage='observer'
+local idleTick,MAX_SCOPE_REUSE=false,2
 local costs
 local function measured(stage,fn)
     local start=os.clock();local values=table.pack(pcall(fn))
@@ -106,7 +107,17 @@ local function sample()
     local key=plain.encode(boundary)
     if not previous or previous.boundary~=key then previous={boundary=key};emit({ready=false,reason='corroborating-owner'});return end
     local owned,equipped=measured('ownership-read',function() return authority.tags(data.PlayerData.OwnedUpgrades),authority.tags(data.PlayerData.EquippedUpgrades) end)
-    local snapshot=measured('scope-read',function() return scopes.snapshot(boundary.world) end)
+    -- The full progression traversal is the most expensive read (~30 ms on a fast PC). On a purely timer-driven idle tick it is reused
+    -- for up to MAX_SCOPE_REUSE ticks (<= 12 s); the boundary identity, ownership/equipment and every anchor check are still re-run
+    -- each tick against it. Any tick caused by a changed file or something in flight, and every native hook, reads fresh.
+    local cached=previous.cache
+    local snapshot
+    if idleTick and cached and cached.age<MAX_SCOPE_REUSE then
+        snapshot=cached.snapshot;cached.age=cached.age+1
+    else
+        snapshot=measured('scope-read',function() return scopes.snapshot(boundary.world) end)
+        previous.cache={snapshot=snapshot,age=0}
+    end
     local after=measured('authority-recheck',function() return authority.recheck(savesOwner,config.gameSlot) end)
     assert(after and plain.encode(after)==key,'Boundary changed during read')
     local complete,state=measured('context-verify',function() return verify(snapshot,owned,equipped) end)
@@ -152,7 +163,7 @@ local function sample()
         local f=assert(io.open(config.evidence,'a'));assert(f:write(plain.encode({kind='item-inspection',inspection=inspection,boundary=boundary}),'\n'));assert(f:close())
     end
     local player=deaths and measured('deathlink-service',function() return deaths.service(config,boundary) end) or nil
-    local loadable=production and plain.array(measured('loadable-scan',function() return production.available(config) end)) or nil
+    local loadable=production and plain.array(measured('loadable-scan',function() return production.available(config,owned) end)) or nil
     emit({ready=true,authority_verified=true,contexts_verified=true,protection_token=config.launchToken,
         checks=plain.array(complete and {config.locationId} or {}),owned=plain.array(owned),
         equipped=plain.array(equipped),boundary=boundary,scopes=snapshot,check_state=state,inspection=inspection,player=player,
@@ -179,20 +190,43 @@ if nodes then nodes.start(config) end
 if access then access.start(config) end
 -- A service that takes long is usually just a slower PC or a heavy scene, not a fault: back off (skip a few ticks so the game
 -- keeps its frame rate) and only stop on a credible stall or a real error. The first slow tick of a hub load must never end a session.
-local SLOW_MS,STALL_MS,MAX_SKIPPED_TICKS=250,3000,3
+local SLOW_MS,STALL_MS,MAX_SKIPPED_WAKEUPS=250,3000,6
+local WAKE_MS,BUSY_INTERVAL,IDLE_INTERVAL=1000,2,4
 local skipTicks=0
+-- Cadence: a full service costs 50+ ms on the game thread. The loop wakes every second, but a wake-up only costs a few small file
+-- reads (the watched control/entitlement files). A full service runs at once when a watched file changed or a grant is prepared
+-- (a received item, trap or DeathLink is noticed within ~1 s), every 2 s while anything is in flight (grant, trap, kill request,
+-- proof, non-ready state), and every 4 s when idle (the client accepts snapshots up to 10 s old).
+local watched={}
+for _,key in ipairs({'control','productionControl','trapControl','deathLinkControl','creditsControl','accessFile','entitlementFile','completedNodesFile'}) do
+    if config[key] then watched[#watched+1]=config[key] end
+end
+local function signature()
+    local parts={};for i,path in ipairs(watched) do parts[i]=plain.read(path) end
+    return table.concat(parts,'\0')
+end
+local function inFlight()
+    return pending~=nil or lastState~='ready' or (production and production.busy()) or (deaths and deaths.busy()) or (traps and traps.busy())
+end
+local lastSignature,lastFull,tickCount=nil,-math.huge,0
 local function costSummary()
     local rows={};for stage,ms in pairs(costs or {}) do rows[#rows+1]={stage,ms} end
     table.sort(rows,function(a,b) return a[2]>b[2] end)
     local parts={};for i=1,math.min(4,#rows) do parts[i]=rows[i][1]..'='..string.format('%.0f',rows[i][2])..'ms' end
     return table.concat(parts,' ')
 end
-LoopInGameThreadWithDelay(2000,function()
+LoopInGameThreadWithDelay(WAKE_MS,function()
     if stopped then return end
     if skipTicks>0 then skipTicks=skipTicks-1;return end
+    local current,clock,flying=signature(),os.clock(),inFlight()
+    local changed=current~=lastSignature or (production and production.busy())
+    if not changed and clock-lastFull<(flying and BUSY_INTERVAL or IDLE_INTERVAL)-0.25 then return end
+    idleTick=not changed and not flying
+    lastFull=clock
     if busy then stopped=true;print('[APBridge] FAILED reentry\n');return end
     local now=os.time()
     if lastService and now-lastService>15 then stopped=true;emit({ready=false,reason='service-gap'});print('[APBridge] FAILED service-gap\n');return end
+    lastSignature=current
     lastService=now;busy=true;costs={};local start=os.clock();local ok,err=pcall(sample);busy=false
     local workMs=(os.clock()-start)*1000
     local accounted=0;for _,v in pairs(costs) do accounted=accounted+v end
@@ -200,8 +234,13 @@ LoopInGameThreadWithDelay(2000,function()
     -- Small diagnostic publication is measured separately; disk/AP durability
     -- lives in the external operator/ledger, never in the native-call bracket.
     local telemetryStart=os.clock()
-    local logged,logError=pcall(append,{kind='callback-timing',stage=callbackStage,work_ms=workMs,
-        costs=costs,clock='Windows CRT elapsed os.clock; not isolated CPU',observed_at=os.time(),ok=ok})
+    -- The timing row is a disk write on the game thread: keep every error/slow/non-observer tick, the first few and one in ten.
+    tickCount=tickCount+1
+    local logged,logError=true,nil
+    if not ok or callbackStage~='observer' or workMs>50 or tickCount<=3 or tickCount%10==0 then
+        logged,logError=pcall(append,{kind='callback-timing',stage=callbackStage,work_ms=workMs,
+            costs=costs,clock='Windows CRT elapsed os.clock; not isolated CPU',observed_at=os.time(),ok=ok})
+    end
     local totalMs=(os.clock()-start)*1000
     -- 50 ms is telemetry, not a correctness failure. Stop on a real error or a credible stall; merely slow ticks back off.
     if totalMs>50 then print('[APBridge] slow service '..tostring(totalMs)..' ms\n') end
@@ -219,6 +258,6 @@ LoopInGameThreadWithDelay(2000,function()
             ' telemetry_ms=',tostring((os.clock()-telemetryStart)*1000),'\ncosts: ',costSummary());f:close() end
         emit({ready=false,reason='refused'});print('[APBridge] FAILED bounded-read\n')
     elseif totalMs>SLOW_MS then
-        skipTicks=math.min(MAX_SKIPPED_TICKS,math.floor(totalMs/SLOW_MS))
+        skipTicks=math.min(MAX_SKIPPED_WAKEUPS,2*math.floor(totalMs/SLOW_MS))
     end
 end)

@@ -39,5 +39,24 @@ enabled=0;assert(service(config,boundary,data));assert(calls==0,'Preparation mus
 assert(service(config,boundary,data));assert(calls==1 and owned)
 assert(not service(config,boundary,data));assert(calls==1,'Same command must not replay')
 command(1,42,'fixture',os.time());assert(not service(config,boundary,data));assert(calls==1,'Already-owned receipt must not regrant')
+-- Loadable-definition report: only received (entitled) and not-yet-owned items are looked up, at most a few per tick, cached.
+local production=require('production')
+local lookups,loaded=0,{}
+StaticFindObject=function(path) lookups=lookups+1;return {IsValid=function() return loaded[path]~=false end} end
+local items,lines={},{}
+for i=1,10 do items[tostring(i)]={asset='asset'..i,tag='Tag.'..i};lines[#lines+1]='Tag.'..i end
+local scan={productionItems=items,entitlementFile=root..'.entitled'}
+put(scan.entitlementFile,'')
+assert(#production.available(scan,{})==0 and lookups==0,'Nothing received: no asset lookups at all')
+put(scan.entitlementFile,table.concat(lines,'\n')..'\nTag.Unknown\n')
+assert(#production.available(scan,{'Tag.1'})==6 and lookups==6,'Lookups are capped per tick')
+assert(#production.available(scan,{'Tag.1'})==9 and lookups==9,'Remaining unowned items are looked up next tick; owned/unknown never')
+assert(#production.available(scan,{'Tag.1'})==9 and lookups==9,'Results are cached')
+loaded.asset2=false
+local copy={};for k,v in pairs(items) do copy[k]=v end
+local fresh={productionItems=copy,entitlementFile=scan.entitlementFile}
+assert(#production.available(fresh,{'Tag.1'})==5,'A new config starts a fresh cache; an unloaded definition is not reported')
+os.remove(scan.entitlementFile)
+assert(production.busy()==false,'No prepared grant: not busy')
 os.remove(root);os.remove(root..'.intent-0');os.remove(root..'.intent-1');os.remove(root..'.log')
-print('PASS: actual production Lua refuses wrong binding/unknown ID/expired/disabled item; separates preparation; grants once; already-owned receipt skips native.')
+print('PASS: actual production Lua refuses wrong binding/unknown ID/expired/disabled item; separates preparation; grants once; already-owned receipt skips native; loadable report is bounded.')

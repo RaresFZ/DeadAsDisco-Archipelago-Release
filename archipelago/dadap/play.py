@@ -77,11 +77,18 @@ async def preflight(server, slot, password, ap_root=None, timeout=20):
     return info
 
 
+def _has_tutorial_saves(saved_dir):
+    base = Path(saved_dir) / "SaveGames"
+    return (base / "PagodaPT_M_0.sav").is_file() and (base / "PagodaGP_Main.sav").is_file()
+
+
 def _profile_saves(saved_dir):
     base = Path(saved_dir) / "SaveGames"
     pt, gp = base / "PagodaPT_M_0.sav", base / "PagodaGP_Main.sav"
     if not pt.is_file() or not gp.is_file():
-        raise SafetyError("This profile has no save yet. Run 'newprofile', start a New Game, finish the tutorial, then quit.")
+        raise SafetyError("The tutorial of this multiworld was not saved completely (the game has not written both of its save files). "
+                          "Nothing was changed and your real saves are untouched. Press PLAY again, finish ONLY the tutorial, stay in the "
+                          "hub, quit the game from its menu (do not close it with Alt+F4 or Task Manager) and close Steam.")
     return (gvas.read_tagged_save(pt.read_bytes(), pt.name), gvas.read_tagged_save(gp.read_bytes(), gp.name))
 
 
@@ -209,11 +216,12 @@ def play(layout, profile, server, slot, password=None, *, ap_root=None, features
     session.wait_closed(probe, log)  # Steam/game still open? wait instead of failing
     profile = profile or derive_profile(slot, info["seed"])
     saved_profile = layout.profile_dir(profile) / "Saved"
-    if not (saved_profile / "SaveGames" / "PagodaPT_M_0.sav").is_file():
-        # First time on this multiworld: a vanilla tutorial run creates the profile, then we continue straight into AP.
+    if not _has_tutorial_saves(saved_profile):
+        # First time on this multiworld (or a tutorial that was closed before the game saved it completely): a vanilla tutorial run
+        # creates/resumes the profile, then we continue straight into AP.
         from .cli import run_vanilla
         log("First time on this multiworld: the game opens for the TUTORIAL. Finish only the tutorial, stay in the hub, "
-            "quit the game and close Steam. The Archipelago game then starts by itself.")
+            "quit the game from its menu and close Steam. The Archipelago game then starts by itself.")
         run_vanilla(layout, profile, log)
     parsed_pt, _ = _profile_saves(saved_profile)
     identity = ensure_binding(layout, profile, info, catalog, parsed_pt)
