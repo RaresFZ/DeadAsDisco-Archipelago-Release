@@ -202,7 +202,7 @@ class Controller:
                 self.say("Launching the game offline…")
         elif m.startswith("Archipelago client running"):
             self.step(3, "run", "Connecting to " + (self.server.strip() or "the server"))
-            self.say("Play the game; close it normally when you are done.")
+            self.say(f"In the game press <b {HI}>CONTINUE</b> on your Archipelago save. Do not start a New Game or the tutorial again. Close the game normally when you are done.")
         elif m.startswith("Restored session"):
             self.step(2, "on", "Put back · checked")
         elif m.startswith("!!!"):

@@ -54,6 +54,13 @@ class SupportedBuilds(unittest.TestCase):
         self.assertIn("the previous build", str(caught.exception))
         self.assertEqual([r for r in doctor.diagnose(layout, Probe()) if r[1] == "game build"][0][0], "FAIL")
 
+    def test_the_three_released_game_builds_are_the_pinned_ones(self):
+        self.assertEqual(pins.BUILD, "Pagoda 5.7.4-34094 (Steam build 25902913)")
+        self.assertEqual(pins.EXE_SHA256, "bed680fe630c1dc55624ef60fc7458e7e71d6002eea558873ea3da2fec1953e0")
+        self.assertEqual(sorted(pins.PREVIOUS_BUILDS.values()), ["Pagoda 5.7.4-33649 (Steam build 25647873)", "Pagoda 5.7.4-33836 (Steam build 25772865)"])
+        for text in ("25902913", "25772865", "25647873"):
+            self.assertIn(text, pins.supported_builds_text())
+
     def test_pinned_hashes_are_well_formed_and_distinct(self):
         hashes = pins.supported_exe_hashes()
         self.assertEqual(len(hashes), 1 + len(pins.PREVIOUS_BUILDS))

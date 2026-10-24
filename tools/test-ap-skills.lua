@@ -17,7 +17,8 @@ local data={IsValid=function() return true end,PlayerData={OwnedUpgrades=owned,E
  IsUpgradeEquipped=function(_,id) return equipped[values[id.TagName]] or false end,
  RemoveOwnedUpgrade=function(_,id) calls=calls+1;owned[values[id.TagName]]=nil;equipped[values[id.TagName]]=nil end}
 local boundary={slot='slot',dataOwner='owner'}
-package.loaded.authority={boundary=function() return boundary,nil,data end,slotted=function() return {} end,
+local unloaded=false
+package.loaded.authority={boundary=function() if unloaded then return nil,'title-or-loading' end return boundary,nil,data end,slotted=function() return {} end,
  tags=function(list) local out={};for tag,has in pairs(list) do if has then out[#out+1]=tag end end;table.sort(out);return out end}
 local hooks={}
 RegisterHook=function(path,pre,post) hooks[path:match(':([^:]+)$')]={pre=pre,post=post} end
@@ -26,7 +27,7 @@ local effects={}
 package.loaded['power-removal']={effect=function(_,_,_,tag) effects[#effects+1]=tag;return {pawn=true,applied_before=false,cleaned=false,still_equipped=false} end,remove=function() end}
 local config={nodeLocationsEnabled=true,nodeLocationsTest=true,rewardSuppressionTest=true,powerRemovalTest=true,nativeOwnershipRemoval=true,powerOwnershipRemoval=true,
  nodeJournal=root..'.journal',entitlementFile=root..'.entitlements',lease=root..'.lease',launchToken='test',
- gameSlot='slot',generation='test',nodeItems={['Tag.One']={id=1,asset='fixture'},['Tag.Two']={id=2},['Tag.Power']={id=3,ownershipFamily='power'}},
+ gameSlot='slot',generation='test',nodeItems={['Tag.One']={id=1,asset='fixture'},['Tag.Two']={id=2},['Tag.Power']={id=3,ownershipFamily='power'},['Tag.Three']={id=4,asset='fixture'}},
  suppressedNodes={['Tag.One']=true,['Tag.Two']=true,['Tag.Power']=true},
  authorizeMutation=function() end,refuseMutation=function(err) refused=err end}
 put(config.lease,'test\n');put(config.entitlementFile,'');put(config.nodeJournal,'')
@@ -83,6 +84,25 @@ data.RemoveOwnedUpgrade=function(_,id) owned[values[id.TagName]]=nil;owned['Tag.
 config.suppressionTestTags={['Tag.Two']=true}
 assert(pcall(module.service,config,boundary,data),'Re-granted suppressed target must be tolerated')
 assert(assert(io.open(config.nodeJournal)):read('a'):find('node%-suppression%-cascade'),'Cascade must be journaled')
+-- A hook can fire while a level or the save is loading: nothing to record, unreceived rewards stay gated, the bridge keeps running (player report).
+unloaded=true;refused=nil;local recorded=assert(io.open(config.nodeJournal)):read('a')
+local gatedNode=param(def('Tag.Two'));hooks.ToggleUpgradeEquippedState.pre(nil,gatedNode)
+assert(gatedNode:get()==nil and not refused,'Unloaded save: an unreceived node stays gated without stopping the bridge')
+local gatedPower=param(def('Tag.Power'));hooks.EquipOrSwapBossAbilityAtSlot.pre(nil,gatedPower)
+assert(gatedPower:get()==nil and not refused,'Unloaded save: an unreceived power stays gated without stopping the bridge')
+hooks.AddOwnedUpgrade.post(param(data),param({TagName=name('Tag.Two')}))
+assert(not refused,'Unloaded save: ownership hook is skipped, not refused')
+local afterSkips=assert(io.open(config.nodeJournal)):read('a')
+assert(not afterSkips:sub(#recorded+1):find('node%-interaction'),'Unloaded save: toggles and slot swaps record nothing')
+assert(afterSkips:find('node%-hook%-skipped') and afterSkips:find('ToggleUpgradeEquippedState'),'Skipped hooks are visible in the journal')
+-- A real purchase while the save cannot be read is still recorded (once the reward is withheld later by the service).
+local buy=param(def('Tag.Three'));hooks.TryBuyUpgradeWithCredits.pre(nil,buy);hooks.TryBuyUpgradeWithCredits.post(nil,param(true),buy)
+assert(not refused,'Unloaded save: purchase is not refused')
+local withPurchase=assert(io.open(config.nodeJournal)):read('a')
+assert(withPurchase:sub(#afterSkips+1):find('"id":4',1,true) and withPurchase:sub(#afterSkips+1):find('node%-interaction'),'Unloaded save: the purchase check is recorded')
+local failedBuy=param(def('Tag.Three'));hooks.TryBuyUpgradeWithCredits.pre(nil,failedBuy);hooks.TryBuyUpgradeWithCredits.post(nil,param(false),failedBuy)
+assert(assert(io.open(config.nodeJournal)):read('a')==withPurchase,'Unloaded save: a refused purchase records nothing')
+unloaded=false
 -- Mutation errors signal refusal instead of silently leaving a leaked reward.
 config.authorizeMutation=function() error('ambiguous owner') end
 hooks.TryBuyUpgradeWithCredits.pre(nil,param(a));assert(refused)

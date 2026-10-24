@@ -1,0 +1,66 @@
+{
+    "changed_config":  [
+                           "DefaultGame.ini: ChallengeScoreTimePenalty, StoryLevelScoreTimePenalty, ChallengeSpeedCompletionBonusesPerChallenge, StarRatingThresholdsPerChallenge (new challenge entries and values)",
+                           "DefaultEngine.ini: +EnabledFeatureFlags HalloweenAdditions"
+                       ],
+    "mounted_files":  {
+                          "before":  28808,
+                          "after":  28856
+                      },
+    "method":  "Offline CUE4Parse extraction (read-only) of the same 1098 selected gameplay packages, archived .ini files, localization and string tables (tools/StaticExtract, same selected-paths.json as the previous update), byte-for-byte SHA-256 comparison; plus a search of the new exe for every game identifier the Lua mod uses.",
+    "extracted_files_compared":  {
+                                     "different":  63,
+                                     "identical":  1385,
+                                     "by_extension":  {
+                                                          ".uasset":  10,
+                                                          ".csv":  1,
+                                                          ".bin":  1,
+                                                          ".umap":  47,
+                                                          ".locres":  1,
+                                                          ".ini":  3
+                                                      }
+                                 },
+    "changed_upgrade_definitions":  [
+                                        "PlayerUpgrade_Charlie_PerfectHitExtraDamageAndFever: description text key Description -\u003e DescriptionV2 only",
+                                        "PlayerUpgrade_Dancer_AoeBurnOnStrongDrummerang: description text key V1 -\u003e V2 only"
+                                    ],
+    "conclusion":  "The update is additive. Nothing the catalog or the mod relies on was removed or renamed. New collectibles, challenge and cosmetic are not part of the world (catalog unchanged, world 0.5.5): they are ignored, not breaking. UE4SS on this exe and a save stamped 34094 have NOT been exercised yet: live verification pending.",
+    "changed_string_tables":  [
+                                  "ST_Cosmetics",
+                                  "ST_Memorabilia",
+                                  "ST_ChallengeList",
+                                  "ST_ArenaNames",
+                                  "ST_UnlockConditions",
+                                  "ST_SkillTree_Charlie",
+                                  "ST_SkillTree_Dancer"
+                              ],
+    "added_gameplay_tags":  [
+                                "Progression.Challenge.Dancer.SugarAndSpice.3",
+                                "Progression.Memorabilia.Trinkets.Pumpkin8bit",
+                                "Progression.PlayerCosmetics.Charlie.Hair.Halloween.PumpkinHead",
+                                "FeatureFlag.Arena.Custom.HalloweenAdditions",
+                                "NPCSpawner.Blood.* (7 spawner tags)"
+                            ],
+    "mod_identifiers":  {
+                            "absent_from_exe":  [
+                                                    "config key names that are Lua-only (6)",
+                                                    "Default__PagodaCombatFunctionLibrary and the two Blueprint classes GA_Listen_Death_Player_C / GE_Damage_SetByCaller_C, which are runtime or pak names; both assets are in the new paks"
+                                                ],
+                            "checked":  83
+                        },
+    "from":  {
+                 "engine":  "5.7.4 ++brainjar+release-CL-33836",
+                 "exe_sha256":  "81157164f458d8afea1addc04298c7d829c10ddcdacbe65228d5e571f4e2fc51",
+                 "steam_build":  25772865
+             },
+    "removed_gameplay_tags":  [
+
+                              ],
+    "to":  {
+               "exe_size":  193215048,
+               "engine":  "5.7.4 ++brainjar+release-CL-34094",
+               "exe_modified":  "2026-10-15 04:56:20",
+               "exe_sha256":  "bed680fe630c1dc55624ef60fc7458e7e71d6002eea558873ea3da2fec1953e0",
+               "steam_build":  25902913
+           }
+}

@@ -19,7 +19,7 @@ latest zip from the **Releases** page of this repository (the source code is for
 | | |
 |---|---|
 | A PC | Windows 10 or 11 |
-| The game | **Dead as Disco** on Steam, fully updated (the app supports Steam builds **25772865** and **25647873** and tells you if yours differs; don't use a beta branch) |
+| The game | **Dead as Disco** on Steam, fully updated (the app supports Steam builds **25902913** (the Halloween update), **25772865** and **25647873** and tells you if yours differs; don't use a beta branch) |
 | The mod package | `DeadAsDiscoAP-<version>-windows.zip` (from the project's *Releases* page or from whoever invited you) |
 | A multiworld | Someone has to host it (see step 4; it can be you) |
 | About 1 GB free | On the drive where Windows keeps your user files |

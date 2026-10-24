@@ -15,13 +15,25 @@ local tierCounts={}
 local failedSuppression={}
 local gateEntitled,gateSlots={},{}
 local attempts={}
-local function ready(config)
+-- optional: a hook can fire while a level or the save is loading (no loaded playthrough yet). There is nothing to record or verify then,
+-- so the caller just skips that part (the observer tick checks everything once the playthrough is back); only a real integrity failure
+-- (lost lease, anchors changed, wrong owner) may stop the bridge.
+local function ready(config,optional)
     assert(plain.read(config.lease)==config.launchToken..'\n','Node hook has no protected launch lease')
     local boundary,_,data=authority.boundary(config.gameSlot)
-    assert(boundary and boundary.slot==config.gameSlot,'Ambiguous node playthrough')
+    if optional and not (boundary and boundary.slot==config.gameSlot) then return nil end
+    assert(boundary and boundary.slot==config.gameSlot,'Node playthrough not loaded')
     assert(config.authorizeMutation,'Missing runtime context verifier')
     config.authorizeMutation(boundary,data)
     return boundary,data
+end
+-- Journal row (at most one per hook every 30 s) so a skipped hook is visible in the support files instead of silent.
+local noted={}
+local function skipped(config,hook,tag)
+    local now=os.clock()
+    if noted[hook] and now-noted[hook]<30 then return end
+    noted[hook]=now
+    append(config,{kind='node-hook-skipped',hook=hook,tag=tag,reason='playthrough-not-loaded'})
 end
 local function entitled(config,tag,snapshot)
     if snapshot then return snapshot[tag]==true end
@@ -237,12 +249,20 @@ function M.start(config)
         local tag=ue.string(d.UpgradeIdTag.TagName,'NameProperty')
         local row=config.nodeItems[tag];if not row then return end
         assert(not pending,'Reentrant skill purchase')
-        local boundary,data=ready(config)
+        local boundary,data=ready(config,true)
+        if not boundary then
+            -- Still a real purchase of a mapped node in the protected AP profile: remember it, the post hook records the check
+            -- and the observer service removes the withheld reward as soon as the save can be read.
+            skipped(config,'TryBuyUpgradeWithCredits',tag)
+            pending={tag=tag,id=row.id,deferred=true}
+            return
+        end
         pending={tag=tag,id=row.id,boundary=plain.encode(boundary),owned=data:IsUpgradeOwned(d.UpgradeIdTag),credits=data:GetCredits()}
     end,function(_,originalReturn,definition)
         if not pending then return end
         local request=pending;pending=nil
         if originalReturn:get()~=true then return end
+        if request.deferred then record(config,request.tag,'purchase-while-loading');return end
         local d=definition:get();assert(d:IsValid(),'Purchase definition lost')
         assert(ue.string(d.UpgradeIdTag.TagName,'NameProperty')==request.tag,'Purchase target changed')
         local boundary,data=ready(config);assert(plain.encode(boundary)==request.boundary,'Purchase identity changed')
@@ -261,8 +281,9 @@ function M.start(config)
         local d=definition:get();if not d:IsValid() then return end
         local tag=ue.string(d.UpgradeIdTag.TagName,'NameProperty')
         if not config.nodeItems[tag] then return end
-        local _,data=ready(config)
-        if data:IsUpgradeOwned(d.UpgradeIdTag) or config.suppressedNodes[tag] then record(config,tag,'node-toggle') end
+        local _,data=ready(config,true)
+        if not data then skipped(config,'ToggleUpgradeEquippedState',tag) end
+        if data and (data:IsUpgradeOwned(d.UpgradeIdTag) or config.suppressedNodes[tag]) then record(config,tag,'node-toggle') end
         if config.suppressedNodes[tag] and not entitled(config,tag) then
             -- The virtual purchased state represents the location, not a usable
             -- AP ability. The native catalog accepts a null definition and exits.
@@ -274,7 +295,7 @@ function M.start(config)
         local d=definition:get();if not d:IsValid() then return end
         local tag=ue.string(d.UpgradeIdTag.TagName,'NameProperty')
         if not config.nodeItems[tag] then return end
-        ready(config)
+        if not ready(config,true) then skipped(config,'EquipOrSwapBossAbilityAtSlot',tag) end
         -- This native component method can also run during grant/reload. It is
         -- only an effect gate, never evidence of a player taking a node.
         if config.suppressedNodes[tag] and not entitled(config,tag) then definition:set(nil) end
@@ -292,7 +313,8 @@ function M.start(config)
             if not authority.boundary(config.gameSlot) then return end
             local tag=ue.string(id:get().TagName,'NameProperty')
             if not config.suppressedNodes[tag] or (pending and pending.tag==tag) then return end
-            local boundary,data=ready(config)
+            local boundary,data=ready(config,true)
+            if not boundary then skipped(config,'AddOwnedUpgrade',tag);return end
             assert(context:get():GetFullName()==boundary.dataOwner,'Wrong native reward owner')
             if config.nodeItems[tag] and config.nodeItems[tag].ownershipFamily=='power' and not entitled(config,tag) then
                 record(config,tag,'vanilla-power-award')

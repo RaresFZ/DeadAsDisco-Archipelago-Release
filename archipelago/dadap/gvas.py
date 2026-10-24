@@ -5,9 +5,10 @@ Output mirrors the JavaScript decoder exactly so both can be compared on real sa
 """
 import struct
 
-# Engine version stamped in the save header: the game build before (33649) and after (33836) the October 2026 update.
+# Engine version stamped in the save header: 33649 (build 25647873), 33836 (25772865) and 34094 (25902913, the Halloween update; its stamp is
+# expected, from the exe version, but no save written by it has been read yet).
 # The property layout was checked against real saves written by both.
-SUPPORTED_ENGINES = {(5, 7, 4, 33649), (5, 7, 4, 33836)}
+SUPPORTED_ENGINES = {(5, 7, 4, 33649), (5, 7, 4, 33836), (5, 7, 4, 34094)}
 SUPPORTED_CLASSES = {
     "PagodaGP_Main.sav": "/Script/Pagoda.PagodaGlobalProgressSaveGame",
     "PagodaPT_M_0.sav": "/Script/Pagoda.PagodaPlaythroughSaveGame",

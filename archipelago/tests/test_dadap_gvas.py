@@ -41,8 +41,8 @@ def minimal_save(changelist, save_class="/Script/Pagoda.PagodaPlaythroughSaveGam
 
 class SaveHeaderTests(unittest.TestCase):
     def test_saves_from_both_game_builds_are_readable(self):
-        # 33649 = Steam build 25647873, 33836 = build 25772865 (the game rewrote every save with the new stamp).
-        for changelist in (33649, 33836):
+        # 33649 = Steam build 25647873, 33836 = 25772865, 34094 = 25902913 (the game rewrites every save with the new stamp).
+        for changelist in (33649, 33836, 34094):
             self.assertEqual(gvas.read_tagged_save(minimal_save(changelist), "PagodaPT_M_0.sav")["properties"], [], changelist)
 
     def test_an_unknown_engine_build_is_refused(self):

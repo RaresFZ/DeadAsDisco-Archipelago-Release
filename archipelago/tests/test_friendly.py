@@ -1,4 +1,4 @@
-﻿import re
+import re
 import unittest
 
 from archipelago.dadap import friendly
@@ -27,6 +27,7 @@ class FriendlyErrorTests(unittest.TestCase):
         "Missing capabilities certificate; this build cannot grant items": "E-FILES",
         "Proxy DLL pin mismatch": "E-FILES",
         "The game bridge stopped itself (callback-time-budget). Checks and items are paused.": "E-BRIDGE",
+        "The game bridge stopped itself (...authority.lua:49: Wrong active slot). Checks and items are paused.": "E-WRONG-SAVE",
         "This profile is bound to a different Archipelago slot/seed. Use a new profile for a new game.": "E-PROFILE",
         "something nobody has seen before": "E-UNKNOWN",
     }
