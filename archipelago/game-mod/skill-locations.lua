@@ -19,7 +19,9 @@ local attempts={}
 -- so the caller just skips that part (the observer tick checks everything once the playthrough is back); only a real integrity failure
 -- (lost lease, anchors changed, wrong owner) may stop the bridge.
 local function ready(config,optional)
-    assert(plain.read(config.lease)==config.launchToken..'\n','Node hook has no protected launch lease')
+    local lease=plain.try(config.lease)
+    if lease==nil and optional then return nil end -- unreadable for a moment (antivirus scan): skip this hook, do not stop the bridge
+    assert(lease==config.launchToken..'\n','Node hook has no protected launch lease')
     local boundary,_,data=authority.boundary(config.gameSlot)
     if optional and not (boundary and boundary.slot==config.gameSlot) then return nil end
     assert(boundary and boundary.slot==config.gameSlot,'Node playthrough not loaded')
@@ -37,7 +39,9 @@ local function skipped(config,hook,tag)
 end
 local function entitled(config,tag,snapshot)
     if snapshot then return snapshot[tag]==true end
-    return ('\n'..plain.read(config.entitlementFile)):find('\n'..tag..'\n',1,true)~=nil
+    local text=plain.try(config.entitlementFile)
+    if text==nil then return true end -- cannot read it right now: never treat that as "nothing is entitled" (it would remove skills)
+    return ('\n'..text):find('\n'..tag..'\n',1,true)~=nil
 end
 local function record(config,tag,interaction)
     local row=config.nodeItems[tag]
@@ -373,8 +377,10 @@ function M.service(config,boundary,data)
     if not config.nodeLocationsEnabled then return end
     -- One synchronous authorization snapshot per service, not one disk open per
     -- mapped node. Native hooks still read fresh authorization independently.
+    local entitlementText=plain.try(config.entitlementFile)
+    if entitlementText==nil then return false end -- unreadable for the moment: the next service decides, a skill is never removed on a guess
     local entitlements={}
-    for tag in plain.read(config.entitlementFile):gmatch('[^\r\n]+') do entitlements[tag]=true end
+    for tag in entitlementText:gmatch('[^\r\n]+') do entitlements[tag]=true end
     for _,row in ipairs(config.baselineNodes or {}) do record(config,row.tag,'legacy-vanilla-save') end
     for tag,row in pairs(config.nodeItems) do
         if row.ownershipFamily=='power' and not entitled(config,tag,entitlements) and data:IsUpgradeOwned({TagName=FName(tag)}) then

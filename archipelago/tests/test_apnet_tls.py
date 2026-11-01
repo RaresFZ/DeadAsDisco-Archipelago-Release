@@ -19,8 +19,8 @@ def fake_websockets(connect):
 
 
 class UrlTests(unittest.TestCase):
-    def test_public_server_tries_tls_first(self):
-        self.assertEqual(apnet._urls("archipelago.gg:51938"), ["wss://archipelago.gg:51938", "ws://archipelago.gg:51938"])
+    def test_public_server_only_ever_uses_tls(self):
+        self.assertEqual(apnet._urls("archipelago.gg:51938"), ["wss://archipelago.gg:51938"])  # no plain-text fallback for the password
 
     def test_other_hosts_try_plain_first(self):
         self.assertEqual(apnet._urls("localhost:38281"), ["ws://localhost:38281", "wss://localhost:38281"])

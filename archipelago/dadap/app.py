@@ -23,6 +23,10 @@ def main(argv=None):
     if argv:
         from .cli import main as cli_main
         return cli_main(argv)
+    from . import instance
+    if not instance.acquire():
+        instance.tell_already_open()
+        return 0
     from .gui import main as gui_main
     gui_main()
     return 0

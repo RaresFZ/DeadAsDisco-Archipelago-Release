@@ -55,6 +55,7 @@ def run_vanilla(layout, profile, log=print):
             session.wait_closed(probe, log)
             closed = session.restore(layout, probe)
             log(f"Restored session {closed['sid']}; your original saves are back (verified byte-for-byte).")
+            session.tidy(layout, log)
         except SafetyError as error:
             log(f"NOT restored yet ({error}). Close the game and Steam, then use Recover.")
             raise
@@ -140,8 +141,16 @@ def build_parser():
     return parser
 
 
+CHANGES_SAVES = ("cmd_play", "cmd_recover", "cmd_vanilla", "cmd_uninstall")
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.run.__name__ in CHANGES_SAVES:
+        from . import instance
+        if not instance.acquire():
+            print("REFUSED: the launcher (or another command) is already running; close it first.", file=sys.stderr)
+            return 2
     try:
         args.run(args)
     except SafetyError as error:

@@ -16,13 +16,14 @@ import shutil
 import subprocess
 import threading
 import time
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import doctor, friendly, play, session
-from .fsutil import SafetyError
+from .fsutil import SafetyError, write_json
 
 STEP_NAMES = ("Steam Cloud", "Game files", "Saves", "Server", "Slot")
 HI = 'style="color:#ffe81a"'
@@ -107,10 +108,9 @@ class Controller:
 
     def _save(self):
         try:
-            self.settings_path.parent.mkdir(parents=True, exist_ok=True)
             settings = self._load()  # keep what other code stored (the chosen game folder)
             settings.update({"server": self.server.strip(), "slot": self.slot.strip(), "cloud_off": self.cloud_off})
-            self.settings_path.write_text(json.dumps(settings), encoding="utf-8")
+            write_json(self.settings_path, settings)  # temporary file + rename: never half a settings file
         except OSError:
             pass
 
@@ -244,6 +244,7 @@ class Controller:
     def _watch_status(self, process, path):
         """Follow the client's status file while it runs: connection, items received, checks sent."""
         total_seen = False
+        block_reported = False
         while process.poll() is None:
             try:
                 data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -261,7 +262,9 @@ class Controller:
                         self.step(4, "live", (self.slot.strip() or "") + (f" · {self.total} checks" if self.total else ""))
                         self.say(f"You’re in, <b {HI}>{html.escape(self.slot.strip())}</b>. Saves go back when you quit the game.")
                     elif data.get("connection") == "blocked":
-                        self._fail("The Archipelago client refused this connection (wrong server, seed or password).")
+                        if not block_reported:  # the status file stays "blocked": explain once, not at every poll
+                            block_reported = True
+                            self._fail(data.get("error") or "The Archipelago client refused this connection (wrong server, seed or password).")
                     elif not data.get("authenticated") and self.status == "connected":
                         self.status = "running"
                         self.step(3, "run", "Reconnecting…")
@@ -299,7 +302,10 @@ class Controller:
             except Exception as error:  # noqa: BLE001 - show any failure to the player instead of dying silently
                 failed = True
                 self.log(f"ERROR: {error!r}")
-                self._fail(repr(error))
+                for line in traceback.format_exc().splitlines()[-10:]:  # where it happened: the journal file keeps it for support
+                    self.log(line.strip())
+                path = getattr(error, "filename", None)  # a refused file operation names the file
+                self._fail(repr(error) + (f" [{path}]" if path else ""))
             finally:
                 with self.lock:
                     self.busy, self.client, self.status_path = False, None, None
@@ -475,8 +481,11 @@ def make_handler(controller, token, assets, port):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            length = int(self.headers.get("Content-Length", "0") or 0)
-            body = self.rfile.read(min(length, 65536))  # always read the request first, so an early refusal never resets the connection
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+            except ValueError:
+                length = 0
+            body = self.rfile.read(max(0, min(length, 65536)))  # always read the request first, so an early refusal never resets the connection
             if path == "/api/bye":
                 if self._checked(from_query=True):
                     controller.closed = True

@@ -5,11 +5,16 @@ to it. Each entry has a stable code so a screenshot is enough to know which case
 """
 import re
 
-CONTACT = ("Still stuck? Ping @the_twelvez in the Dead As Disco channel of the Archipelago Discord server. Send a screenshot of this "
-           "window and describe what you did just before. I may ask you for a few more files.")
+CONTACT = ("Still stuck? You can ping @the_twelvez in the Dead As Disco channel of the Archipelago Discord server, with a screenshot of this "
+           "window and a description of what you did just before. Replies may be slow, and you may be asked for a few more files.")
 
 # (code, pattern, title, what it means, [what to try])
 CATALOG = (
+    # First on purpose: its message ends with the client's last log line, which may contain words that match other entries.
+    ("E-CLIENT", r"Archipelago client stopped \(exit code",
+     "The Archipelago connection stopped", "The part of the app that talks to the Archipelago server ended unexpectedly, so checks and items are paused. Your saves are safe.",
+     ["Quit the game from its menu and close Steam.", "Press Play again.",
+      "If it keeps happening, the file runtime\\client.log in %LOCALAPPDATA%\\DeadAsDiscoAP\\sessions\\<latest folder> shows why; you can post it in the Dead As Disco channel of the Archipelago Discord server."]),
     ("E-NOT-RESTORED", r"NOT restored yet",
      "Your saves are safe but not put back yet", "The game or Steam was still open when the session ended.",
      ["Close the game and Steam completely.", "Press Recover saves."]),
@@ -30,6 +35,9 @@ CATALOG = (
     ("E-PASSWORD", r"requires a password|InvalidPassword|Server requires",
      "This room needs a password", "The host protected the room with a password and none (or a wrong one) was typed.",
      ["Type the password in the Password field (ask the host).", "Press Play again."]),
+    ("E-SEED", r"Server seed mismatch|identity mismatch",
+     "The room is not the one this profile was made for", "The room's seed or your slot is not the one the app prepared the game for. The room may have been restarted or regenerated while connecting.",
+     ["Check that the address and port are those of your room (they change when the room restarts).", "Press Play again."]),
     ("E-SLOT", r"InvalidSlot",
      "Slot name not found", "The room does not have a player with that exact name.",
      ["Copy the slot name from the room page, capital letters count.", "Press Play again."]),
@@ -53,7 +61,7 @@ CATALOG = (
      ["Close the game and Steam, then press Recover saves.", "Then press Play."]),
     ("E-BUILD", r"Unsupported game build",
      "Your game version is not supported yet", "Dead as Disco was updated to a version this app has not been checked against.",
-     ["Look for a newer release of the app, or ask me and I will add it."]),
+     ["Look for a newer release of the app. If there is none yet, you can ask in the Dead As Disco channel of the Archipelago Discord server (replies may be slow)."]),
     ("E-SAVE-FORMAT", r"Unsupported save header|SaveError",
      "The app could not read a save file", "The game was updated and writes its saves in a way this app version does not know, or a save was cut short.",
      ["Update the app to the newest release.", "If it is the first run, press Play again and play the tutorial to the end."]),
@@ -68,6 +76,14 @@ CATALOG = (
      "The secure connection check failed", "Your PC does not trust the server's certificate. This is usually a wrong date or time, or antivirus HTTPS scanning.",
      ["Check that your PC's date and time are correct (sync them in Windows settings).",
       "Turn off HTTPS or web scanning in your antivirus for a moment, then press Play again."]),
+    ("E-ACCESS", r"PermissionError|Access is denied|Acc[eè]s refus",
+     "Windows would not let the app change a file", "Another program was holding a file or folder of the game's saves open, or a security tool blocked the app. Running the app as administrator usually does not help. Your real saves are safe.",
+     ["Close Explorer windows and programs that show the Dead as Disco save folder (%LOCALAPPDATA%\\Pagoda\\Saved), and close Steam and the game completely.",
+      "Add %LOCALAPPDATA%\\Pagoda and %LOCALAPPDATA%\\DeadAsDiscoAP to your antivirus exclusions, and allow the app in Windows 'Controlled folder access' if it is on.",
+      "Press Recover saves, wait a few seconds, then press Play again."]),
+    ("E-BINDING", r"BindingError|No stable anchor|No anchor shared|Selection differs|Missing selected saved variable",
+     "The app could not prepare this profile's save", "Before it starts the game, the app picks reference points in the profile's save to be sure it is always the same playthrough. This time it could not find a usable set. Your real saves are safe.",
+     ["Press Recover saves, then press Play again.", "If it keeps happening it needs a fix on my side: send a screenshot as described below."]),
     ("E-DISK", r"volume|disk space|Missing directory",
      "A folder or drive problem", "The app needs free space and its working folder on the same drive as the game saves.",
      ["Free some disk space (a few GB).", "Run Check install and read the red lines."]),
@@ -75,10 +91,10 @@ CATALOG = (
      "The game opened a different save than the Archipelago one",
      "The mod only works on the save you made in the tutorial. The game has loaded another one, usually a New Game started by mistake. Your real saves are untouched.",
      ["Quit the game from its menu and close Steam.", "Press Play again, and in the game choose Continue on the save from your first tutorial. Do not start a New Game or the tutorial again.",
-      "If you are not sure which save is the right one, send me a screenshot of the game's save list."]),
+      "If you are not sure which save is the right one, you can post a screenshot of the game's save list in the Dead As Disco channel of the Archipelago Discord server."]),
     ("E-BRIDGE", r"game bridge stopped itself",
      "The in-game mod stopped itself", "The mod found something unsafe or too slow and stopped to protect your game. Your saves are safe.",
-     ["Quit the game from its menu and close Steam.", "Press Play again.", "If it keeps happening, send me the file named in the message."]),
+     ["Quit the game from its menu and close Steam.", "Press Play again.", "If it keeps happening, you can post the file named in the message in the Dead As Disco channel of the Archipelago Discord server."]),
     ("E-PROFILE", r"bound to a different Archipelago|already has game progress",
      "This profile belongs to another game", "Each multiworld gets its own profile. This one already has other progress.",
      ["Use the exact slot and room you started with.", "For a new multiworld the app creates a fresh profile by itself."]),

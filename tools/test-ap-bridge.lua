@@ -117,6 +117,33 @@ onScopeRead=function() error() end
 fresh();poll();poll();poll();poll();assert(rows[#rows]:find('FAILED',1,true),'Error without a message did not stop the bridge')
 assert(refusalText():find('without a message',1,true) and not refusalText():find('callback-time-budget',1,true),'Nil error mislabelled as a time budget')
 onScopeRead=nil
+-- A wake-up that arrives while a service is still running is skipped, not fatal (it used to stop the bridge silently, with no refusal file).
+local function anyFailed() for _,row in ipairs(rows) do if row:find('FAILED',1,true) then return true end end return false end
+local function lastState() for i=#rows,1,-1 do if rows[i]:find('STATE ',1,true) then return rows[i] end end return '' end
+fresh();poll();poll();poll();poll();os.remove(config.refusal)
+onScopeRead=function() onScopeRead=nil;touch();poll() end
+touch();poll()
+assert(not anyFailed(),'A re-entered wake-up stopped the bridge');assert(io.open(config.refusal,'r')==nil,'A skipped wake-up wrote a refusal')
+touch();poll();assert(not anyFailed() and lastState():find('STATE ready',1,true),'The bridge did not carry on after a re-entered wake-up: '..lastState())
+-- The game thread stalled for a long time (a level load): nothing is stopped; the bridge reports "not ready", corroborates again and resumes.
+local realTime,seconds=os.time,os.time()
+os.time=function() return seconds end
+fresh();poll();poll();poll();poll();os.remove(config.refusal)
+assert(lastState():find('STATE ready',1,true))
+seconds=seconds+40;touch();poll()
+assert(lastState():find('STATE service-gap',1,true) and not anyFailed(),'A long gap stopped the bridge or was not reported as not ready: '..lastState())
+touch();poll();touch();poll();touch();poll()
+assert(lastState():find('STATE ready',1,true) and not anyFailed(),'The bridge did not resume after a long gap: '..lastState());assert(io.open(config.refusal,'r')==nil)
+os.time=realTime
+-- The refusal file keeps the FIRST cause; a hook that later finds the runtime stopped is appended below it, not written over it.
+fresh();poll();poll();poll()
+config.refuseMutation('the real cause')
+local refused,why=pcall(config.authorizeMutation);assert(not refused and why:find('Runtime refused',1,true) and why:find('the real cause',1,true),why)
+config.refuseMutation(why)
+assert(refusalText():find('^the real cause') and refusalText():find('--- later ---',1,true) and refusalText():find('Runtime refused',1,true),refusalText())
+-- A stop asked for by the client names itself.
+fresh();poll();poll();poll();put(config.control,'stop\n');poll()
+refused,why=pcall(config.authorizeMutation);assert(not refused and why:find('the client asked it to stop',1,true),why)
 -- The actual scheduler must not combine preparation, native call and post-read.
 config.phase3Enabled=true
 local prepared,dispatched,completed=0,0,0

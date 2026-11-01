@@ -84,6 +84,25 @@ data.RemoveOwnedUpgrade=function(_,id) owned[values[id.TagName]]=nil;owned['Tag.
 config.suppressionTestTags={['Tag.Two']=true}
 assert(pcall(module.service,config,boundary,data),'Re-granted suppressed target must be tolerated')
 assert(assert(io.open(config.nodeJournal)):read('a'):find('node%-suppression%-cascade'),'Cascade must be journaled')
+-- The entitlement file can be unreadable for a moment (the client replacing it, an antivirus scan). "Cannot read" is not "nothing is
+-- entitled": a skill the multiworld sent must never be removed on that guess, by a hook or by the periodic service.
+do
+    local keepTags,keepOwned=config.suppressionTestTags,{}
+    for tag,has in pairs(owned) do keepOwned[tag]=has end
+    config.suppressionTestTags={['Tag.One']=true,['Tag.Two']=true,['Tag.Power']=true}
+    os.remove(config.entitlementFile)
+    owned['Tag.One']=true;owned['Tag.Two']=true;owned['Tag.Power']=true
+    refused=nil
+    hooks.AddOwnedUpgrade.post(param(data),param({TagName=name('Tag.Two')}))
+    assert(owned['Tag.Two'] and not refused,'An unreadable entitlement file must not remove an owned skill (hook)')
+    assert(pcall(module.service,config,boundary,data),'An unreadable entitlement file must not stop the service')
+    assert(owned['Tag.One'] and owned['Tag.Two'] and owned['Tag.Power'] and not refused,
+        'An unreadable entitlement file must not remove an owned skill (service)')
+    put(config.entitlementFile,'')
+    config.suppressionTestTags=keepTags
+    for tag in pairs(owned) do owned[tag]=nil end
+    for tag,has in pairs(keepOwned) do owned[tag]=has end
+end
 -- A hook can fire while a level or the save is loading: nothing to record, unreceived rewards stay gated, the bridge keeps running (player report).
 unloaded=true;refused=nil;local recorded=assert(io.open(config.nodeJournal)):read('a')
 local gatedNode=param(def('Tag.Two'));hooks.ToggleUpgradeEquippedState.pre(nil,gatedNode)

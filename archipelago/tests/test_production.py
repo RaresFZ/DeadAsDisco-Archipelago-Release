@@ -98,6 +98,50 @@ class ProductionTests(unittest.TestCase):
             process.kill()
             process.stdin.close()
 
+    def test_a_refusal_the_client_chose_ends_with_a_clean_exit_not_an_unhandled_exception_dialog(self):
+        import sys
+        from unittest import mock
+        from archipelago.client import main as client_main
+        argv = ['client', '--server', 'h:1', '--slot', 's', '--seed', '1', '--generation', 'g', '--ledger', 'l', '--snapshot', 'x']
+        async def refuse(args):
+            raise ReconciliationError('Server seed mismatch')
+        with mock.patch.object(sys, 'argv', argv), mock.patch.object(client_main, 'run', refuse), \
+                self.assertLogs(level='ERROR') as logged, self.assertRaises(SystemExit) as raised:
+            client_main.main()
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn('Archipelago client stopped: Server seed mismatch', logged.output[0])
+
+    def test_any_other_crash_also_ends_with_a_clean_exit_and_the_traceback_in_the_log(self):
+        import sys
+        from unittest import mock
+        from archipelago.client import main as client_main
+        argv = ['client', '--server', 'h:1', '--slot', 's', '--seed', '1', '--generation', 'g', '--ledger', 'l', '--snapshot', 'x']
+        async def crash(args):
+            raise KeyError(3)
+        with mock.patch.object(sys, 'argv', argv), mock.patch.object(client_main, 'run', crash), \
+                self.assertLogs(level='ERROR') as logged, self.assertRaises(SystemExit) as raised:
+            client_main.main()
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn('Archipelago client crashed', logged.output[0])
+        self.assertIn('KeyError', logged.output[0])
+
+    def test_the_room_password_is_read_from_the_environment_and_removed_from_it(self):
+        import os, sys
+        from unittest import mock
+        from archipelago.client import main as client_main
+        seen = {}
+        async def capture(args):
+            seen['password'] = args.password
+        argv = ['client', '--server', 'h:1', '--slot', 's', '--seed', '1', '--generation', 'g', '--ledger', 'l', '--snapshot', 'x']
+        with mock.patch.object(sys, 'argv', argv), mock.patch.object(client_main, 'run', capture), \
+                mock.patch.dict(os.environ, {'DAD_AP_PASSWORD': 'hunter2'}):
+            client_main.main()
+            self.assertNotIn('DAD_AP_PASSWORD', os.environ)
+        self.assertEqual(seen['password'], 'hunter2')
+        with mock.patch.object(sys, 'argv', argv + ['--password', 'typed']), mock.patch.object(client_main, 'run', capture):
+            client_main.main()
+        self.assertEqual(seen['password'], 'typed')
+
     def test_reservations_left_by_an_earlier_game_session_never_lock_the_profile(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             root=Path(folder);source=root/'source';source.write_text('fixture')
@@ -150,8 +194,107 @@ class ProductionTests(unittest.TestCase):
             self.assertEqual(ledger.db.execute("SELECT status FROM receipts WHERE idx=0").fetchone()[0],'applying')
             self.assertEqual(fresh.reconcile({'owned':['Tag.One']},{'owned':['Tag.One'],'save_sha256':'fixture'}),2)
             self.assertEqual(ledger.pending_items(),[])
-            with self.assertRaises(ReconciliationError):
-                fresh.reconcile({'owned':[]},{'owned':[],'save_sha256':'fixture'})
+            # The skill vanishes from the game: nothing fails any more. Receipt 0 was already granted in this game session and the mod
+            # refuses to grant one receipt twice in a game process, so it is left for the next launch; receipt 1 was never granted
+            # natively (it was satisfied by receipt 0), so it is delivered.
+            self.assertEqual(fresh.reconcile({'owned':[]},{'owned':[],'save_sha256':'fixture'}),0)
+            self.assertEqual([s for _,s in ledger.db.execute("SELECT idx,status FROM receipts ORDER BY idx")],['applied','applying'])
+            self.assertTrue((root/'control.intent-1').exists())
+            self.assertEqual(len(fresh.notices),2)
+            ledger.close()
+
+    def _reconciler(self, root, tag='tok', name='control'):
+        source=root/'proof';source.write_text('fixture, not live proof')
+        cert=root/'capability.json'
+        cert.write_text(json.dumps(dict(status='verified-protected-passive-grant-cold',max_health_delta=10,
+            duplicate_health_delta=0,sources={str(source):hashlib.sha256(source.read_bytes()).hexdigest()})))
+        (root/name).mkdir(exist_ok=True)
+        protection=SimpleNamespace(data=dict(production_proof_sha256=hashlib.sha256(cert.read_bytes()).hexdigest(),
+            production_control=str(root/name/'control'),launch_token=tag))
+        return protection,cert
+
+    def test_a_skill_the_game_lost_is_delivered_again_instead_of_stopping_the_client(self):
+        # Seen in two players' runs: the ledger holds a skill as applied, the game (live and saved file) no longer owns it, and the old
+        # client died with 'Applied ownership lost; refuse save rollback' on every launch. The multiworld still says the player owns
+        # the skill, so the next launch delivers it again.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+            root=Path(folder)
+            catalog=dict(items=[dict(id=42,tag='Tag.One',name='Wild Growth',mechanism='owned-upgrade'),
+                                dict(id=43,tag='Tag.Two',name='Fever Dream',mechanism='owned-upgrade')])
+            ledger=Ledger(root/'ledger',Binding('seed',0,1,'generation','slot'))
+            ledger.receive(0,[[42,99,1,1],[43,100,1,1]])
+            protection,cert=self._reconciler(root,'tok-1','one')
+            first=OwnershipReconciler(ledger,catalog,protection,cert)
+            both={'owned':['Tag.One','Tag.Two'],'save_sha256':'old'}
+            first.reconcile({'owned':[]},{'owned':[],'save_sha256':'old'})
+            first.reconcile({'owned':['Tag.One']},{'owned':['Tag.One'],'save_sha256':'old'})
+            first.reconcile(both,both)
+            self.assertEqual([s for _,s in ledger.db.execute("SELECT idx,status FROM receipts ORDER BY idx")],['applied','applied'])
+            # Next launch (a new runtime folder): the profile's save lost Tag.One.
+            protection,cert=self._reconciler(root,'tok-2','two')
+            second=OwnershipReconciler(ledger,catalog,protection,cert)
+            lost={'owned':['Tag.Two'],'save_sha256':'rolled-back'}
+            self.assertEqual(second.reconcile(lost,lost),0)                  # Tag.Two is still confirmed; Tag.One is delivered again
+            self.assertEqual([s for _,s in ledger.db.execute("SELECT idx,status FROM receipts ORDER BY idx")],['applying','applied'])
+            self.assertTrue((root/'two'/'control.intent-0').exists())
+            self.assertTrue((root/'two'/'control').read_text().startswith('grant\n0\n42\ntok-2\n'))
+            self.assertEqual(second.notices,['The game no longer had the skill "Wild Growth" the multiworld already sent you: giving it again.'])
+            row=json.loads((root/'two'/'ownership-repairs.jsonl').read_text().splitlines()[0])
+            self.assertEqual((row['kind'],row['tag'],row['in_saved']),('applied-ownership-lost','Tag.One',False))
+            self.assertEqual(row['saved_owned'],['Tag.Two'])
+            # The game grants it; once live and saved agree the receipt is applied again.
+            self.assertEqual(second.reconcile(both,both),1)
+            self.assertEqual(ledger.pending_items(),[])
+            ledger.close()
+
+    def test_a_skill_only_one_side_lacks_waits_for_the_game_instead_of_stopping(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+            root=Path(folder)
+            catalog=dict(items=[dict(id=42,tag='Tag.One',mechanism='owned-upgrade')])
+            ledger=Ledger(root/'ledger',Binding('seed',0,1,'generation','slot'))
+            ledger.receive(0,[[42,99,1,1]])
+            protection,cert=self._reconciler(root,'tok-1','one')
+            both={'owned':['Tag.One'],'save_sha256':'a'}
+            first=OwnershipReconciler(ledger,catalog,protection,cert)
+            first.reconcile({'owned':[]},{'owned':[],'save_sha256':'a'});first.reconcile(both,both)
+            protection,cert=self._reconciler(root,'tok-2','two')
+            second=OwnershipReconciler(ledger,catalog,protection,cert)
+            # The live game has not finished loading the save (it lacks the skill the saved file has): no failure, no repair yet.
+            self.assertEqual(second.reconcile({'owned':[]},both),0)
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts").fetchone()[0],'applied')
+            self.assertFalse((root/'two'/'control').exists())
+            # The game finished loading: nothing to repair.
+            self.assertEqual(second.reconcile(both,both),0)
+            self.assertEqual(second.live_missing_since,{})
+            # The saved file lags the live game (an autosave is pending): the live game owns it, so nothing happens either.
+            self.assertEqual(second.reconcile(both,{'owned':[],'save_sha256':'b'}),0)
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts").fetchone()[0],'applied')
+            # A live game that still lacks the skill after the grace period gets it delivered again.
+            third=OwnershipReconciler(ledger,catalog,self._reconciler(root,'tok-3','three')[0],cert)
+            self.assertEqual(third.reconcile({'owned':[]},both),0)
+            third.live_missing_since[0]-=1000
+            third.reconcile({'owned':[]},both)
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts").fetchone()[0],'applying')
+            self.assertTrue((root/'three'/'control.intent-0').exists())
+            ledger.close()
+
+    def test_a_skill_that_vanishes_again_in_the_same_game_session_is_not_sent_twice(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+            root=Path(folder)
+            catalog=dict(items=[dict(id=42,tag='Tag.One',name='Wild Growth',mechanism='owned-upgrade')])
+            ledger=Ledger(root/'ledger',Binding('seed',0,1,'generation','slot'))
+            ledger.receive(0,[[42,99,1,1]])
+            protection,cert=self._reconciler(root,'tok-1','one')
+            both={'owned':['Tag.One'],'save_sha256':'a'};empty={'owned':[],'save_sha256':'b'}
+            first=OwnershipReconciler(ledger,catalog,protection,cert)
+            first.reconcile(empty,empty);first.reconcile(both,both)            # delivered and applied in this game session
+            first.reconcile(empty,empty)                                         # then the game drops it
+            self.assertEqual(ledger.db.execute("SELECT status FROM receipts").fetchone()[0],'applied')
+            self.assertEqual(len(first.notices),1)
+            self.assertIn('comes back the next time you press Play',first.notices[0])
+            first.reconcile(empty,empty)                                         # reported once, never re-sent
+            self.assertEqual(len(first.notices),1)
+            self.assertEqual((root/'one'/'control').read_text().count('grant\n'),1)
             ledger.close()
 
     def test_deathlink_expiry_echo_and_reconnect(self):

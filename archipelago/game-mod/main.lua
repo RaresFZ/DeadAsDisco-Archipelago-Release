@@ -13,6 +13,8 @@ local traps=config.trapsEnabled and require('traps') or nil
 local credits=config.fanPacksEnabled and require('credits') or nil
 assert(EngineTickAvailable,'Required EngineTick unavailable')
 local stopped,busy,sequence=false,false,0
+local stopCause -- why the runtime stopped (text for the refusal file); a later hook only finds it stopped
+local reentries=0
 local previous,lastState,lastService=nil,nil,nil
 local requestSeen=''
 local pending
@@ -82,7 +84,7 @@ local function sample()
     callbackStage=pending and pending.stage or 'observer'
     players.begin()
     local command=measured('control-read',function() return plain.read(config.control) end)
-    if command=='stop\n' then if traps then traps.cleanup() end;pending=nil;stopped=true;emit({ready=false,reason='stopped'});return end
+    if command=='stop\n' then if traps then traps.cleanup() end;pending=nil;stopped=true;stopCause='the client asked it to stop';emit({ready=false,reason='stopped'});return end
     if not measured('protection-check',protected) then if deaths then deaths.invalidate() end;if traps then traps.cleanup() end;assert(not pending,'Protected lease lost with pending intent');previous=nil;emit({ready=false,reason='no-protected-launch-lease'});return end
     if access then measured('access-service',function() access.service(config) end) end
     local boundary,reason,data,savesOwner=measured('authority-scan',function() return authority.boundary(config.gameSlot) end)
@@ -171,18 +173,27 @@ local function sample()
 end
 print('[APBridge] LOADED '..(config.phase3Enabled and 'targeted-proof-production-grants-disabled' or 'grants-disabled')..'\n')
 config.authorizeMutation=function(boundary,data)
-    assert(not stopped,'Runtime refused; mutation disabled')
+    assert(not stopped,'Runtime refused; mutation disabled ('..tostring(stopCause)..')')
     local snapshot=scopes.snapshot(boundary.world)
     local owned,equipped=authority.tags(data.PlayerData.OwnedUpgrades),authority.tags(data.PlayerData.EquippedUpgrades)
     verify(snapshot,owned,equipped)
     local after=authority.recheck(data:GetOuter(),config.gameSlot)
     assert(after and plain.encode(after)==plain.encode(boundary),'Node boundary changed')
 end
+-- The first cause stays at the top of the refusal file; anything refused later is appended under it. (A hook that finds the runtime
+-- already stopped used to overwrite the real cause with "Runtime refused; mutation disabled".)
+local refusalWritten=false
+local function writeRefusal(...)
+    local f=io.open(config.refusal,refusalWritten and 'a' or 'w')
+    if f then if refusalWritten then f:write('\n--- later ---\n') end;f:write(...);f:close() end
+    refusalWritten=true
+end
 config.refuseMutation=function(err)
     config.mutationsRefused=true
     stopped=true
+    stopCause=stopCause or tostring(err):sub(1,160)
     if traps then traps.cleanup() end
-    local f=io.open(config.refusal,'w');if f then f:write(tostring(err));f:close() end
+    writeRefusal(tostring(err))
     print('[APBridge] FAILED native-hook\n')
 end
 if deaths then deaths.start(config) end
@@ -223,9 +234,24 @@ LoopInGameThreadWithDelay(WAKE_MS,function()
     if not changed and clock-lastFull<(flying and BUSY_INTERVAL or IDLE_INTERVAL)-0.25 then return end
     idleTick=not changed and not flying
     lastFull=clock
-    if busy then stopped=true;print('[APBridge] FAILED reentry\n');return end
+    -- A wake-up that arrives while a service is still running does nothing (it can neither corrupt nor skip anything); it used to stop the
+    -- bridge for the rest of the session, without leaving a refusal file.
+    if busy then
+        reentries=reentries+1
+        if reentries<=3 then pcall(append,{kind='service-reentry-skipped',count=reentries}) end
+        return
+    end
     local now=os.time()
-    if lastService and now-lastService>15 then stopped=true;emit({ready=false,reason='service-gap'});print('[APBridge] FAILED service-gap\n');return end
+    -- The game thread did not run a service for more than 15 s (a long level load, a frozen window): nothing was observed meanwhile, so
+    -- the next services corroborate owner, ownership and anchors again from scratch before anything is trusted; the client sees "not
+    -- ready" until then. This used to stop the bridge for the rest of the session without leaving a refusal file.
+    if lastService and now-lastService>15 then
+        local gap=now-lastService
+        lastService=now;previous=nil
+        if deaths then deaths.invalidate() end
+        pcall(append,{kind='service-gap',gap_s=gap})
+        emit({ready=false,reason='service-gap'});print('[APBridge] service gap '..tostring(gap)..' s: corroborating again before resuming\n');return
+    end
     lastSignature=current
     lastService=now;busy=true;costs={};local start=os.clock();local ok,err=pcall(sample);busy=false
     local workMs=(os.clock()-start)*1000
@@ -250,12 +276,13 @@ LoopInGameThreadWithDelay(WAKE_MS,function()
     elseif totalMs>STALL_MS then failure='callback-time-budget (one service took '..string.format('%.0f',totalMs)..' ms)' end
     if failure then
         stopped=true
+        stopCause=stopCause or failure:sub(1,160)
         config.mutationsRefused=true
         if traps then traps.cleanup() end
         pending=nil
-        local f=io.open(config.refusal,'w');if f then f:write(failure,
+        writeRefusal(failure,
             '\nstage=',tostring(callbackStage),' work_ms=',tostring(workMs),' total_ms=',tostring(totalMs),
-            ' telemetry_ms=',tostring((os.clock()-telemetryStart)*1000),'\ncosts: ',costSummary());f:close() end
+            ' telemetry_ms=',tostring((os.clock()-telemetryStart)*1000),'\ncosts: ',costSummary())
         emit({ready=false,reason='refused'});print('[APBridge] FAILED bounded-read\n')
     elseif totalMs>SLOW_MS then
         skipTicks=math.min(MAX_SKIPPED_WAKEUPS,2*math.floor(totalMs/SLOW_MS))

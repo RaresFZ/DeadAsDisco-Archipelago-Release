@@ -82,6 +82,137 @@ class SessionTests(unittest.TestCase):
         self.assertTrue((self.layout.profile_dir("p1") / "Saved.prev-s2").is_dir())
         self.assertEqual((self.layout.profile_dir("p1") / "Saved.prev-s2" / "SaveGames" / "PagodaPT_M_0.sav").read_bytes(), b"AP PROGRESS")
 
+    def _begin_with_failing_profile_copy(self, sid):
+        from unittest import mock
+        real, calls = session.copy_tree, []
+        def flaky(source, destination):
+            calls.append(destination)
+            if len(calls) == 2:  # the first call is the backup, the second puts the profile in place
+                raise OSError("disk full")
+            return real(source, destination)
+        with mock.patch.object(session, "copy_tree", flaky):
+            session.begin(self.layout, "p1", self.probe, sid=sid)
+
+    def test_a_swap_that_fails_half_way_puts_the_saves_back_by_itself(self):
+        session.begin(self.layout, "p1", self.probe, sid="s1")
+        session.restore(self.layout, self.probe)  # the profile now exists, so the next begin copies it
+        with self.assertRaises(OSError):
+            self._begin_with_failing_profile_copy("s2")
+        self.assertEqual(manifest(self.layout.saved_dir), self.original)
+        self.assertIsNone(session.active_session(self.layout))
+        self.assertFalse(self.layout.parked_dir("s2").exists())
+
+    def test_if_the_automatic_restore_fails_too_the_session_stays_open_for_recover(self):
+        from unittest import mock
+        session.begin(self.layout, "p1", self.probe, sid="s1")
+        session.restore(self.layout, self.probe)
+        with mock.patch.object(session, "restore", side_effect=SafetyError("held")):
+            with self.assertRaises(SafetyError) as raised:
+                self._begin_with_failing_profile_copy("s2")
+        self.assertIn("NOT restored yet", str(raised.exception))
+        self.assertIsNotNone(session.active_session(self.layout))
+        session.restore(self.layout, self.probe)  # what the Recover button does
+        self.assertEqual(manifest(self.layout.saved_dir), self.original)
+
+    # ---- crash-safe profile capture and housekeeping ----------------------------------------------------------------------
+    def _session_with_progress(self, sid, content):
+        session.begin(self.layout, "p1", self.probe, sid=sid)
+        (self.layout.saved_dir / "SaveGames" / "PagodaPT_M_0.sav").write_bytes(content)
+
+    def _profile_sav(self):
+        return (self.layout.profile_dir("p1") / "Saved" / "SaveGames" / "PagodaPT_M_0.sav").read_bytes()
+
+    def test_a_crash_right_after_the_ap_saves_were_moved_out_is_completed_by_recover(self):
+        self._session_with_progress("s1", b"OLD")
+        session.restore(self.layout, self.probe)
+        self._session_with_progress("s2", b"NEW")
+        profile = self.layout.profile_dir("p1")
+        session._rename(self.layout.saved_dir, profile / "Saved.incoming-s2")   # step 1 of the capture, then the PC dies
+        session.restore(self.layout, self.probe)
+        self.assertEqual(self._profile_sav(), b"NEW")
+        self.assertEqual((profile / "Saved.prev-s2" / "SaveGames" / "PagodaPT_M_0.sav").read_bytes(), b"OLD")
+        self.assertEqual(manifest(self.layout.saved_dir), self.original)
+        self.assertIsNone(session.active_session(self.layout))
+
+    def test_a_crash_between_the_profile_renames_never_leaves_the_profile_without_saves(self):
+        self._session_with_progress("s1", b"OLD")
+        session.restore(self.layout, self.probe)
+        self._session_with_progress("s2", b"NEW")
+        profile = self.layout.profile_dir("p1")
+        session._rename(self.layout.saved_dir, profile / "Saved.incoming-s2")
+        session._rename(profile / "Saved", profile / "Saved.prev-s2")          # step 2, then the PC dies: no Saved folder at all
+        self.assertFalse((profile / "Saved").exists())
+        session.restore(self.layout, self.probe)
+        self.assertEqual(self._profile_sav(), b"NEW")
+        self.assertEqual(manifest(self.layout.saved_dir), self.original)
+
+    def _history(self, count, unfinished=(), partial=()):
+        """Finished sessions 1..count, each with a session folder (and a mod loader copy), a backup and a rotated profile folder."""
+        state = self.layout.state_dir
+        sids = [f"202610{i:02d}-120000-{i:04x}" for i in range(1, count + 1)]
+        for index, sid in enumerate(sids, 1):
+            folder = state / "sessions" / sid
+            (folder / "core").mkdir(parents=True)
+            (folder / "core" / "UE4SS.dll").write_bytes(b"x" * 100)
+            status = "isolated" if index in unfinished else "restored"
+            (folder / "session.json").write_text(json.dumps({"sid": sid, "status": status}), encoding="utf-8")
+            if index in partial:
+                (folder / "partial-active").mkdir()
+            (state / "backups" / sid / "Saved").mkdir(parents=True)
+            (state / "backups" / sid / "Saved" / "a.sav").write_bytes(b"y" * 100)
+            (state / "profiles" / "p1" / f"Saved.prev-{sid}").mkdir(parents=True)
+            (state / "profiles" / "p1" / f"Saved.prev-{sid}" / "a.sav").write_bytes(b"z" * 100)
+        (state / "profiles" / "p1" / "Saved").mkdir(parents=True, exist_ok=True)
+        return sids
+
+    def names(self, folder):
+        return sorted(p.name for p in (self.layout.state_dir / folder).iterdir())
+
+    def test_prune_keeps_the_recent_ones_the_oldest_backup_and_everything_unfinished(self):
+        sids = self._history(9, unfinished=(3,), partial=(4,))
+        (self.layout.state_dir / "sessions" / "keep-me").mkdir()                # not a session id: never touched
+        (self.layout.state_dir / "backups" / "keep-me").mkdir()
+        self.assertGreater(session.prune(self.layout), 0)
+        # sessions: the unfinished one and the one with a partial-active folder stay; of the 7 finished-and-clean ones the newest 5 stay
+        self.assertEqual(self.names("sessions"), sorted(["keep-me"] + [sids[i - 1] for i in range(3, 10)]))
+        # backups: of the finished sessions' backups the oldest and the newest 4 stay; the unfinished session's backup stays
+        self.assertEqual(self.names("backups"), sorted(["keep-me"] + [sids[i - 1] for i in (1, 3, 6, 7, 8, 9)]))
+        # rotated profile folders: the 2 newest stay, "Saved" itself is never touched
+        self.assertEqual(sorted(p.name for p in (self.layout.state_dir / "profiles" / "p1").iterdir()),
+                         sorted(["Saved", f"Saved.prev-{sids[7]}", f"Saved.prev-{sids[8]}"]))
+        self.assertEqual(session.prune(self.layout), 0)                          # nothing more to do the second time
+
+    def test_prune_does_nothing_while_a_session_is_open(self):
+        self._history(9)
+        session.begin(self.layout, "p1", self.probe, sid="open")
+        before = (self.names("sessions"), self.names("backups"))
+        self.assertEqual(session.prune(self.layout), 0)
+        self.assertEqual((self.names("sessions"), self.names("backups")), before)
+
+    def test_prune_never_follows_a_link_out_of_the_state_folder(self):
+        import subprocess
+        sids = self._history(9)
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        (outside / "precious.txt").write_text("keep", encoding="utf-8")
+        link = self.layout.state_dir / "sessions" / sids[0] / "link"
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(outside)], capture_output=True)
+        if made.returncode != 0:
+            self.skipTest("cannot create a junction here")
+        session.prune(self.layout)
+        self.assertEqual((outside / "precious.txt").read_text(encoding="utf-8"), "keep")
+        self.assertTrue((self.layout.state_dir / "sessions" / sids[0]).is_dir())  # refused as a whole, not half-deleted
+
+    def test_tidy_says_what_it_freed_and_never_raises(self):
+        from unittest import mock
+        said = []
+        self._history(9)
+        self.assertGreater(session.tidy(self.layout, said.append), 0)
+        self.assertRegex(said[-1], r"^Cleaned up old session files \(\d+ MB freed\)\.$")
+        with mock.patch.object(session, "prune", side_effect=OSError("locked")):
+            self.assertEqual(session.tidy(self.layout, said.append), 0)
+        self.assertTrue(said[-1].startswith("[WARN] Could not clean up"))
+
     def test_refuses_running_game_steam_and_unfinished_session(self):
         self.probe.game = True
         with self.assertRaises(SafetyError):

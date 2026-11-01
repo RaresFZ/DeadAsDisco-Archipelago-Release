@@ -12,6 +12,9 @@ Play **Dead as Disco** as an [Archipelago](https://archipelago.gg) randomizer, a
 This guide takes you from nothing to playing. You do **not** need Python or any programming tools: just download the
 latest zip from the **Releases** page of this repository (the source code is for contributors, see the end of this file).
 
+> **Project status:** I do not have much time to maintain this project right now, so updates and support may be slow. See
+> [Project status](#project-status). It was built with AI assistance, see the [AI disclosure](#ai-disclosure).
+
 ---
 
 ## 1. What you need
@@ -136,6 +139,45 @@ The app needs a supported game build (it refuses any other) and Steam Cloud off.
 Pull requests and bug reports are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [development guide](docs/DEVELOPMENT.md)
 (setup is one command: `python tools/setup-dev.py`). The exact list of what is and is not a check is in
 [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md); how checks and items are defined is in [docs/CATALOG.md](docs/CATALOG.md).
+
+## AI disclosure
+
+I built this project together with an AI assistant from Anthropic: **Claude Code**.
+Most of the code was written by the AI. The architecture, the technology choices, the decisions and the review are mine, and I also wrote and changed code
+myself. I am a computer science student; this started as a fun project for me and a friend, and my friend asked me to share it with the
+Archipelago community.
+
+- **What the AI did.** It wrote most of the code in this repository: the app and its launcher window, the Archipelago client, the in-game
+  Lua mod, the tests and the documentation. It also did the reverse-engineering work on the game's files and saves that the randomizer is
+  built on, following what I asked for, and it fixed the parts of the code it judged to be wrong.
+- **What I did.** I started the project myself, designed the architecture and chose the technologies. I coded the first part of the project myself, and I have changed
+  the code since. I decided what the randomizer does (what counts as a check, the items, the options, the goals), designed the look of the
+  launcher, reviewed the code, played and tested it in the real game, went through the bug reports from players, and published the
+  releases. I understand how the code works and I do not just paste what the AI gives me.
+- **I am responsible for it.** The project and its bugs are mine, not "the AI's". When something breaks I try to look into it and fix it, as far
+  as my time allows (see [Project status](#project-status)). I have less time for the coding itself now, which is one reason for that
+  section.
+- **Nothing AI-powered runs on your PC.** The app contains no AI model and calls no AI service. The app itself sends nothing anywhere
+  except to the Archipelago server whose address you type in. It is ordinary code you can read.
+- **Everything is public.** The source of the app, the mod and the Archipelago world is in this repository, and the releases are built
+  from it with `tools/make-release.py`. The project is [MIT licensed](LICENSE) and the third-party software it uses or bundles is
+  credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **It is tested, and its limits are written down.** There are automated tests for the app, the client and the mod, and the project is
+  played in the real game. What has not been confirmed in live play is listed under **Known limits** in each release's notes and in
+  [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
+
+**It is your choice.** If you do not want to play software that was written with the help of AI, that is completely fair and nobody will try to
+change your mind. In the same way, this is my choice: AI-assisted code is allowed where this project is shared (the Archipelago Discord's
+Developer Code of Conduct covers AI-generated code and makes the developer responsible for it, which is how this project works).
+Disagreeing is fine, insults are not: insults and harassment about it, towards me or towards players using the mod, will not be accepted in issues,
+pull requests or discussions.
+
+## Project status
+
+I do not have enough time to maintain this project lately, so I cannot promise fixes or new releases even with the help of AI. I can't
+just let Claude run in the background, fix things and push: I need to read, review, change and test everything myself. And I do not know what
+will happen to the project. It stays public under the [MIT license](LICENSE): you are welcome to clone it, fork it, fix it and keep it going yourself, and
+have fun with it. Bug reports are still welcome, but answers may be slow or may not come, especially because I am in my last two years of studies.
 
 ## License
 

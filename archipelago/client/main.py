@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import hashlib
+import os
 import sys
 import threading
 from pathlib import Path
@@ -238,6 +239,9 @@ async def run(args):
                         # This does not dispatch or authorize a native mutation.
                         if production_certificate:
                             items.reconcile(bridge.last_snapshot, saved)
+                            for notice in items.notices:  # plain words for the launcher window
+                                logging.info(notice)
+                            items.notices.clear()
                             remaining = sorted(set(ctx.missing_locations) - {r[0] for r in ledger.db.execute('SELECT id FROM checks')})
                             if remaining and items.hints:
                                 targets = sorted({remaining[index % len(remaining)] for index in items.hints})
@@ -271,8 +275,8 @@ async def run(args):
             await asyncio.sleep(0.5)
         if protocol_error is not None:
             raise protocol_error
-    except ReconciliationError:
-        status.update(connection="blocked", authenticated=False, game_ready=False)
+    except ReconciliationError as error:
+        status.update(connection="blocked", authenticated=False, game_ready=False, error=str(error))
         report()
         raise
     finally:
@@ -305,8 +309,20 @@ def main():
     p.add_argument("--death-link", action="store_true")
     p.add_argument("--seconds", type=float, default=0)
     args = p.parse_args()
+    # The launcher passes the room password in the environment (a command line is readable by every program on the PC).
+    env_password = os.environ.pop("DAD_AP_PASSWORD", None)
+    args.password = args.password or env_password or None
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(run(args))
+    try:
+        asyncio.run(run(args))
+    except ReconciliationError as error:
+        # A refusal the client chose on purpose: say it in one line and exit. An uncaught exception would end in the packaged
+        # app's "Unhandled exception in script" dialog, which keeps this process alive until it is clicked away.
+        logging.error("Archipelago client stopped: %s", error)
+        sys.exit(1)
+    except Exception as error:  # noqa: BLE001 - same reason: any crash ends the process cleanly, with the traceback in the log
+        logging.exception("Archipelago client crashed: %r", error)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

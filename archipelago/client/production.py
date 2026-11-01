@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from .reconciliation import ReconciliationError
 
+PARTIAL_GRACE_SECONDS = 90
+
 
 class OwnershipReconciler:
     def __init__(self, ledger, catalog, protection, certificate, root=None):
@@ -28,6 +30,10 @@ class OwnershipReconciler:
         self.inflight = None
         self.hints = []
         self.published = {}
+        self.dispatched = set()       # skill receipts delivered in this client run (= this game process)
+        self.deferred = set()         # of those, the ones reported as lost again (repaired by the next launch)
+        self.live_missing_since = {}  # receipt index -> when the live game first lacked a skill the saved file has
+        self.notices = []             # plain-words lines for the launcher window
 
     def publish(self, path, text):
         if not path or self.published.get(path) == text:
@@ -56,12 +62,17 @@ class OwnershipReconciler:
         # Locally observed interactions are durable truth even before the server confirms them.
         checked = {ident for ident, in self.ledger.db.execute('SELECT id FROM checks')}
         self.publish(self.protection.get('completed_nodes_file'), ''.join(str(i)+'\n' for i in sorted(nodes & checked)))
-        for payload, in self.ledger.db.execute("SELECT payload FROM receipts WHERE status='applied'"):
+        lost = []
+        for index, payload in self.ledger.db.execute("SELECT idx,payload FROM receipts WHERE status='applied' ORDER BY idx"):
             row = self.items.get(json.loads(payload)[0])
             if row is None:
                 raise ReconciliationError('Applied unknown item')
             if row['mechanism'] == 'owned-upgrade' and (row['tag'] not in owned or row['tag'] not in durable):
-                raise ReconciliationError('Applied ownership lost; refuse save rollback')
+                lost.append((index, row, row['tag'] in owned, row['tag'] in durable))
+        waiting = {index for index, _, in_live, _ in lost if not in_live}
+        self.live_missing_since = {index: since for index, since in self.live_missing_since.items() if index in waiting}
+        if lost:
+            self.recover_lost(lost, live, saved)
         applied = 0
         satisfied_prefix = set()
         for index, payload, status in self.ledger.pending_items():
@@ -139,8 +150,56 @@ class OwnershipReconciler:
             return applied
         return applied
 
+    def recover_lost(self, lost, live, saved):
+        """Skills the multiworld sent and the ledger holds as applied, but the game does not own now.
+
+        Each was proven in a saved file once, so a skill missing from BOTH the live game and the saved file was lost by the game (an
+        older save came back, or the game dropped it). The multiworld still says the player owns it, so it is delivered again.
+        Missing from only one side is normally a game load or an autosave in progress: a skill only the live game lacks is delivered
+        again after a grace period, a skill only the saved file lacks is left for the game's next autosave.
+
+        The mod refuses to grant the same receipt twice in one game process, so a receipt already delivered in this game session (by this
+        client run or an earlier one: its intent file exists) is never sent again in it, which also bounds any loop; the next launch
+        repairs it."""
+        now = time.monotonic()
+        reopen = []
+        for index, row, in_live, in_saved in lost:
+            if in_live:
+                self.live_missing_since.pop(index, None)
+                continue
+            if in_saved and now - self.live_missing_since.setdefault(index, now) < PARTIAL_GRACE_SECONDS:
+                continue
+            if index in self.dispatched or Path(str(self.command) + f'.intent-{index}').exists():
+                if index not in self.deferred:
+                    self.deferred.add(index)
+                    self.notices.append('The skill "%s" vanished from the game again. It comes back the next time you press Play.' % self.label(row))
+                    self.note({'kind': 'applied-ownership-lost-again', 'index': index, 'tag': row['tag']})
+                continue
+            reopen.append((index, row))
+        for index, row in reopen:
+            self.ledger.reopen_applied(index)
+            self.live_missing_since.pop(index, None)
+            self.notices.append('The game no longer had the skill "%s" the multiworld already sent you: giving it again.' % self.label(row))
+            self.note({'kind': 'applied-ownership-lost', 'index': index, 'tag': row['tag'], 'in_saved': row['tag'] in saved.get('owned', []),
+                       'save_sha256': saved.get('save_sha256'),
+                       'live_owned': sorted(live.get('owned', [])), 'saved_owned': sorted(saved.get('owned', []))})
+
+    @staticmethod
+    def label(row):
+        return row.get('name') or row['tag']
+
+    def note(self, row):
+        """Support evidence next to the control files; never allowed to break the session."""
+        try:
+            with (self.command.parent / 'ownership-repairs.jsonl').open('a', encoding='utf-8', newline='\n') as f:
+                f.write(json.dumps(dict(row, utc=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())), sort_keys=True) + '\n')
+        except OSError:
+            pass
+
     def dispatch(self, index, item, control, verb, satisfied_prefix):
             self.ledger.begin_item(index, grant_validated=True, satisfied_prefix=satisfied_prefix)
+            if verb == 'grant':
+                self.dispatched.add(index)
             command = f"{verb}\n{index}\n{item}\n{self.protection['launch_token']}\n{int(time.time())}\n"
             marker = Path(control + f'.intent-{index}')
             with marker.open('xb') as f:

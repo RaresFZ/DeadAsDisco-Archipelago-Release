@@ -111,6 +111,16 @@ class Ledger:
             if result.rowcount != 1:
                 raise ReconciliationError("No matching in-flight item")
 
+    def reopen_applied(self, index):
+        """Return an applied receipt to 'received' so its delivery runs again.
+
+        Only for a receipt whose effect is provably absent from the game: the caller has checked that the live game and the
+        saved file both lack it. Ownership grants are idempotent, so delivering one again is safe."""
+        with self.db:
+            result = self.db.execute("UPDATE receipts SET status='received',proof=NULL WHERE idx=? AND status='applied'", (index,))
+            if result.rowcount != 1:
+                raise ReconciliationError("No applied receipt to reopen")
+
     def mark_durable(self, index, proof):
         # Only a validated game adapter may supply a reopened-save ownership proof.
         if not isinstance(proof, str) or not proof:

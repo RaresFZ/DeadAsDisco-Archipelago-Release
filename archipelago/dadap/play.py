@@ -15,6 +15,7 @@ from . import binding, core, gvas, pins, saved_state, session
 from .fsutil import SafetyError, read_json, write_json
 
 GAME_SLOT = "PagodaPT_M_0"
+PASSWORD_ENV = "DAD_AP_PASSWORD"  # how the room password reaches the client process (see client/main.py)
 # A profile must be created before any mission is played: progress made outside AP can never be un-reported.
 PROGRESS_FAMILIES = ("story", "rank", "difficulty", "challenge", "quest", "song")
 
@@ -180,6 +181,43 @@ def _watch_bridge(path, stop, log):
             return
 
 
+def start_client(runner, command, cwd, password=None):
+    """Start the client. The room password travels in the environment: a command line can be read by every program on the PC."""
+    if password:
+        os.environ[PASSWORD_ENV] = password
+    try:
+        return runner(command, cwd=cwd)
+    finally:
+        os.environ.pop(PASSWORD_ENV, None)
+
+
+def _last_line(path):
+    try:
+        lines = [line.strip() for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+    except OSError:
+        return ""
+    return lines[-1][:200] if lines else ""
+
+
+def _watch_client(process, status_path, logfile, stop, log):
+    """Tell the player when the Archipelago client ended on its own, instead of leaving them playing without it."""
+    while not stop.wait(3):
+        code = process.poll()
+        if code is None:
+            continue
+        stop.wait(1)  # let the last output lines reach the log file
+        try:
+            status = json.loads(Path(status_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            status = {}
+        if status.get("connection") == "blocked":
+            return  # a refusal the client chose: the window already shows its own reason
+        detail = _last_line(logfile)
+        log(f"!!! The Archipelago client stopped (exit code {code}{': ' + detail if detail else ''}). "
+            f"Checks and items are paused. Your saves are safe: quit the game and click Play again.")
+        return
+
+
 def derive_profile(slot, seed):
     """One profile per multiworld and slot, named from the seed so a regenerated game never collides."""
     clean = re.sub(r"[^A-Za-z0-9_-]+", "-", f"{slot}-{str(seed)[:8]}").strip("-")
@@ -270,11 +308,10 @@ def play(layout, profile, server, slot, password=None, *, ap_root=None, features
                    "--catalog", str(catalog_path(root)), "--production-certificate", str(certificate),
                    "--install-root", str(root), "--status", str(runtime / "status.json"),
                    "--scout-file", str(layout.profile_dir(profile) / "node-contents.txt")]
-        if password:
-            command += ["--password", password]
-        client = (client_runner or _client_runner(log, on_client, str(runtime / "client.log")))(command, cwd=str(root))
+        client = start_client(client_runner or _client_runner(log, on_client, str(runtime / "client.log")), command, str(root), password)
         watcher = threading.Thread(target=_watch_bridge, args=(runtime / "ap-refusal.txt", stop_watch, log), daemon=True)
         watcher.start()
+        threading.Thread(target=_watch_client, args=(client, runtime / "status.json", runtime / "client.log", stop_watch, log), daemon=True).start()
         log("Archipelago client running. Play the game; close it normally when you are done.")
         wait_game(probe, log=log)
     except BaseException as error:
@@ -293,6 +330,7 @@ def play(layout, profile, server, slot, password=None, *, ap_root=None, features
             closed = session.restore(layout, probe)
             if closed:
                 log(f"Restored session {closed['sid']}; your original saves are back, byte-for-byte verified.")
+                session.tidy(layout, log)
         except SafetyError as error:
             log(f"NOT restored yet ({error}). Close the game and Steam, then run: recover")
             raise

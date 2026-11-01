@@ -57,20 +57,28 @@ def _leaves(v, prefix="", out=None):
 def select_anchors(scopes, check_tag):
     """(selected {scope:[tags]}, contexts {'scope|context': {tag: leaves}}, selected_objects)."""
     selected, contexts = {}, {}
-    for s in scopes:
-        by_tag = {gvas.tag(v["key"]): v for v in s["variables"]}
-        if s["scope"].endswith("InfiniteDiscoSong"):
-            wanted = list(by_tag)
+    by_tags = [{gvas.tag(v["key"]): v for v in s["variables"]} for s in scopes]
+    # The mod reads the same tags in every context of a scope, so the anchor must exist in ALL of them. The old rule took each context's
+    # own alphabetically first variable and gave up ("Selection differs across contexts") as soon as a long-played save had a context
+    # with a variable the others lack; the first tag they all share is the same tag whenever the old rule worked.
+    for scope in dict.fromkeys(s["scope"] for s in scopes):
+        members = [by_tag for s, by_tag in zip(scopes, by_tags) if s["scope"] == scope]
+        if scope.endswith("InfiniteDiscoSong"):
+            wanted = sorted(set.intersection(*(set(by_tag) for by_tag in members)))
         else:
-            stable = sorted(t for t, v in by_tag.items()
-                            if v["value"]["structType"].endswith("ValueSnapshot") and not COUNTER.match(t))
-            if not stable:
-                raise BindingError("No stable anchor in scope " + s["scope"])
-            wanted = [stable[0]]
-        if s["scope"] in selected and selected[s["scope"]] != wanted:
-            raise BindingError("Selection differs across contexts")
-        selected[s["scope"]] = wanted
-        contexts[s["scope"] + "|" + s["context"]] = {t: _leaves(by_tag[t]["value"]) for t in wanted}
+            stable = []
+            for by_tag in members:
+                tags = {t for t, v in by_tag.items() if v["value"]["structType"].endswith("ValueSnapshot") and not COUNTER.match(t)}
+                if not tags:
+                    raise BindingError("No stable anchor in scope " + scope)
+                stable.append(tags)
+            shared = set.intersection(*stable)
+            if not shared:
+                raise BindingError("No anchor shared by every context of scope " + scope)
+            wanted = [min(shared)]
+        selected[scope] = wanted
+    for s, by_tag in zip(scopes, by_tags):
+        contexts[s["scope"] + "|" + s["context"]] = {t: _leaves(by_tag[t]["value"]) for t in selected[s["scope"]]}
     playthrough = [s for s in scopes if s["scope"] == "Progression.Scope.Playthrough"]
     if len(playthrough) != 1:
         raise BindingError("Expected exactly one Playthrough context")

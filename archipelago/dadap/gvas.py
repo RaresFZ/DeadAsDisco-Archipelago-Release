@@ -217,6 +217,15 @@ def _properties(r, depth=0):
 
 
 def read_tagged_save(b, name):
+    """Decode a save. Anything wrong with the bytes (a file the game is still writing, a cut-off or damaged one) is a SaveError,
+    which the client treats as "try again later", never as a crash or a refusal."""
+    try:
+        return _read_tagged_save(b, name)
+    except (struct.error, UnicodeDecodeError, IndexError, OverflowError, RecursionError, MemoryError) as error:
+        raise SaveError(f"Unreadable save ({type(error).__name__}: {error})") from None
+
+
+def _read_tagged_save(b, name):
     h = header(b)
     if h["ue5"] != 1018 or h["engine"] not in SUPPORTED_ENGINES:
         raise SaveError("Unsupported save header")

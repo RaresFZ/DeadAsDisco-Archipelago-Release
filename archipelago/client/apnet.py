@@ -190,7 +190,7 @@ def _urls(address):
     if ":" not in address.rsplit("]", 1)[-1]:
         address += ":38281"
     if host.lower().endswith("archipelago.gg"):
-        return ["wss://" + address, "ws://" + address]  # the public server only speaks TLS
+        return ["wss://" + address]  # the public server only speaks TLS; never fall back to plain text (the room password travels in it)
     return ["ws://" + address, "wss://" + address]
 
 

@@ -89,6 +89,19 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(state["banner"].startswith("Stopped"))
         self.assertTrue(any(l["tg"] == "ERR" and "STOPPED" in l["x"] for l in state["log"]))
 
+    def test_an_unexpected_error_logs_where_it_happened_and_names_the_refused_file(self):
+        # A player's window only said "PermissionError(13, 'Acces refuse')": no file, no place, E-UNKNOWN.
+        def refused(*args, **kwargs):
+            raise PermissionError(13, "Acc\u00e8s refus\u00e9", "C:\\Users\\x\\AppData\\Local\\Pagoda\\Saved")
+        with mock.patch.object(webgui.play, "play", refused):
+            self.play()
+            wait_idle(self.controller)
+        state = self.controller.state()
+        self.assertTrue(any(l["tg"] == "TIP" and "E-ACCESS" in l["x"] for l in state["log"]))
+        written = (Path(self.temp.name) / "launcher-log.txt").read_text(encoding="utf-8")
+        self.assertIn("in refused", written)  # the traceback line that names the function
+        self.assertIn("Pagoda\\Saved", self.controller.last_error["raw"])
+
     def test_details_text_keeps_the_raw_error_and_the_log_file_keeps_every_line(self):
         with mock.patch.object(webgui.play, "play", side_effect=SafetyError("Connection refused: InvalidSlot")):
             self.play()
@@ -139,6 +152,30 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(state["steps"][4]["st"], "live")
         self.controller.busy = False
 
+    def blocked_client(self, **fields):
+        status = Path(self.temp.name) / "status.json"
+        status.write_text(json.dumps({"connection": "blocked", "authenticated": False, **fields}))
+        deadline = time.monotonic() + 2.5
+        self.controller.busy, self.controller.status, self.controller.slot = True, "running", "Me"
+        self.controller._on_client(SimpleNamespace(args=["x", "--status", str(status)], poll=lambda: None if time.monotonic() < deadline else 0))
+        time.sleep(2.2)  # two polls of the one-second status watcher at least
+        self.controller.busy = False
+        return self.controller.state()
+
+    def test_a_client_stopped_by_its_own_error_says_what_it_was_once_not_wrong_server_at_every_poll(self):
+        # Seen in a player's log: a client that stopped itself kept the status "blocked", the window answered "refused this connection
+        # (wrong server, seed or password)" and wrote the same two tips every second for the rest of the session.
+        state = self.blocked_client(error="Server seed mismatch")
+        tips = [l["x"] for l in state["log"] if l["tg"] == "TIP"]
+        self.assertEqual(len(tips), 2, tips)
+        self.assertIn("E-SEED", tips[0])
+        self.assertNotIn("wrong server", state["banner"])
+
+    def test_a_blocked_client_without_a_reason_keeps_the_old_wording(self):
+        state = self.blocked_client()
+        self.assertIn("refused this connection", state["banner"])
+        self.assertEqual(len([l for l in state["log"] if l["tg"] == "TIP"]), 2)
+
 
 class ServerTests(unittest.TestCase):
     def setUp(self):
@@ -185,6 +222,16 @@ class ServerTests(unittest.TestCase):
         self.assertFalse(self.controller.busy)
         status, data = self.request("GET", "/api/state?after=0")
         self.assertEqual((status, json.loads(data)["version"]), (200, "9.9.9"))
+
+    def test_a_malformed_content_length_is_refused_instead_of_hanging_the_server(self):
+        for length in ("-5", "abc"):
+            connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            connection.putrequest("POST", "/api/recover", skip_host=True)
+            connection.putheader("Host", f"127.0.0.1:{self.port}")
+            connection.putheader("Content-Length", length)
+            connection.endheaders()
+            self.assertEqual(connection.getresponse().status, 403, length)  # no token: refused at once, not stuck reading
+            connection.close()
 
     def test_static_files_cannot_escape_the_page_folder(self):
         for path in ("/static/../webgui.py", "/static/%2e%2e/webgui.py", "/static/fonts/../../webgui.py", "/static/../../../README.md"):

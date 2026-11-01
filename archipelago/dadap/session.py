@@ -7,12 +7,14 @@ Safety contract (mirrors the verified development harness):
   * `restore` is idempotent and handles a crash at every step, so `recover` is always safe to run
 """
 import os
+import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
 from . import pins
-from .fsutil import SafetyError, copy_tree, manifest, read_json, sha256_file, verify, write_json
+from .fsutil import SafetyError, _is_reparse, copy_tree, manifest, read_json, sha256_file, verify, write_json
 
 SETTINGS_FILES = ("SaveGames/SharedGameSettings.sav", "SaveGames/EnhancedInputUserSettings.sav",
                   "SaveGames/GameUserSettings.sav", "Config/Windows/GameUserSettings.ini",
@@ -130,23 +132,38 @@ def begin(layout, profile, probe, check_exe=True, sid=None, copy_source=None):
              "copySource": copy_source}
     write_json(session_dir / "session.json", state)
     write_json(layout.pointer, {"sid": sid})
-    if present:
-        _rename(saved, parked)
-    profile_saved = layout.profile_dir(profile) / "Saved"
-    if profile_saved.is_dir():
-        copy_tree(profile_saved, saved)
-        state["profile_fresh"] = False
-    else:
-        saved.mkdir(parents=True)
-        for relative in SETTINGS_FILES:  # preferences only; never progression
-            source = parked / relative
-            if present and source.is_file():
-                (saved / relative).parent.mkdir(parents=True, exist_ok=True)
-                (saved / relative).write_bytes(source.read_bytes())
-        state["profile_fresh"] = True
-    state["status"] = "isolated"
-    write_json(session_dir / "session.json", state)
+    try:
+        if present:
+            _rename(saved, parked)
+        profile_saved = layout.profile_dir(profile) / "Saved"
+        if profile_saved.is_dir():
+            copy_tree(profile_saved, saved)
+            state["profile_fresh"] = False
+        else:
+            saved.mkdir(parents=True)
+            for relative in SETTINGS_FILES:  # preferences only; never progression
+                source = parked / relative
+                if present and source.is_file():
+                    (saved / relative).parent.mkdir(parents=True, exist_ok=True)
+                    (saved / relative).write_bytes(source.read_bytes())
+            state["profile_fresh"] = True
+        state["status"] = "isolated"
+        write_json(session_dir / "session.json", state)
+    except BaseException as error:
+        _undo_failed_begin(layout, probe, error)
+        raise
     return state
+
+
+def _undo_failed_begin(layout, probe, error):
+    """The swap failed half-way (full disk, a file held by antivirus...): put the saves back now, not when the player presses Recover.
+
+    On success the caller re-raises the original error. If the restore fails too, the session stays open for Recover."""
+    try:
+        restore(layout, probe)
+    except Exception as restore_error:  # noqa: BLE001 - the pointer stays, so Recover can finish the job
+        raise SafetyError(f"NOT restored yet ({restore_error}). Close the game and Steam, then press Recover saves. "
+                          f"The swap itself failed with: {error!r}") from error
 
 
 def _load(layout, sid):
@@ -229,6 +246,19 @@ def wait_for_game(probe, appear_timeout=180, poll=2.0, sleep=time.sleep, settle=
     log("Game process has exited.")
 
 
+def _install_incoming(profile, sid):
+    """Finish moving a session's AP saves into the profile. Safe to repeat: a crash between any two renames is completed here,
+    so the profile never ends up without its Saved folder (which would look like a brand-new profile)."""
+    incoming = profile / f"Saved.incoming-{sid}"
+    if not incoming.is_dir():
+        return None
+    active = profile / "Saved"
+    if active.exists():
+        _rename(active, profile / f"Saved.prev-{sid}")
+    _rename(incoming, active)
+    return active
+
+
 def _capture(layout, state, destination_name):
     """Move the live (AP) Saved tree out of the way without deleting anything."""
     saved = Path(state["saved"])
@@ -237,13 +267,8 @@ def _capture(layout, state, destination_name):
     profile = layout.profile_dir(state["profile"])
     profile.mkdir(parents=True, exist_ok=True)
     if destination_name == "profile":
-        incoming = profile / f"Saved.incoming-{state['sid']}"
-        _rename(saved, incoming)
-        active = profile / "Saved"
-        if active.exists():
-            _rename(active, profile / f"Saved.prev-{state['sid']}")
-        _rename(incoming, active)
-        return active
+        _rename(saved, profile / f"Saved.incoming-{state['sid']}")
+        return _install_incoming(profile, state["sid"])
     partial = layout.session_dir(state["sid"]) / "partial-active"
     _rename(saved, partial)
     return partial
@@ -262,6 +287,8 @@ def restore(layout, probe):
     changed = remove_proxy(layout, state)
     if changed:
         _save(layout, state)
+    if state["status"] == "isolated":
+        _install_incoming(layout.profile_dir(state["profile"]), state["sid"])  # a capture that a crash cut short
     saved, parked = Path(state["saved"]), Path(state["parked"])
     if state["originals_present"]:
         if parked.is_dir():
@@ -277,3 +304,79 @@ def restore(layout, probe):
     _save(layout, state)
     layout.pointer.unlink()
     return state
+
+
+# ---- housekeeping ---------------------------------------------------------------------------------------------------------------
+# Every session leaves a backup of the real saves, a copy of the mod loader and a rotated profile folder (about 35-40 MB together).
+# Only finished, recognisable leftovers are ever removed, and always the oldest first.
+SESSION_ID = re.compile(r"^\d{8}-\d{6}(-[0-9a-f]{4})?$")
+KEEP_SESSIONS = 5          # session folders (logs, the mod loader copy) kept for support
+KEEP_BACKUPS = 4           # newest backups of the real saves kept; the very first one is kept as well
+KEEP_OLD_PROFILES = 2      # rotated copies of a profile's saves (Saved.prev-<id>) kept per profile
+
+
+def _folders(parent):
+    """Folders named like a session id, oldest first (the id starts with its date)."""
+    parent = Path(parent)
+    return sorted(p for p in parent.iterdir() if p.is_dir() and SESSION_ID.match(p.name)) if parent.is_dir() else []
+
+
+def _size(path):
+    return sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file())
+
+
+def _remove(layout, path):
+    """Delete one folder inside the state directory; bytes freed (0 when it was refused). Never follows or deletes links."""
+    path = Path(path)
+    root = layout.state_dir.resolve()
+    if root not in path.resolve().parents or _is_reparse(path):
+        return 0
+    for current, directories, files in os.walk(path):
+        for name in directories + files:
+            if _is_reparse(os.path.join(current, name)):
+                return 0
+    freed = _size(path)
+    shutil.rmtree(path)
+    return freed
+
+
+def _restored(folder):
+    try:
+        return read_json(Path(folder) / "session.json").get("status") == "restored"
+    except (OSError, ValueError):
+        return False
+
+
+def prune(layout, keep_sessions=KEEP_SESSIONS, keep_backups=KEEP_BACKUPS, keep_old_profiles=KEEP_OLD_PROFILES):
+    """Remove old finished leftovers; returns the bytes freed.
+
+    Never touches: an open session, a session that is not marked restored, one that kept a `partial-active` folder, a backup whose
+    session is unknown or unfinished, anything whose name is not a session id, and the oldest backup of the real saves."""
+    if active_session(layout):
+        return 0
+    freed = 0
+    sessions = layout.state_dir / "sessions"
+    backups = [b for b in _folders(layout.state_dir / "backups") if _restored(sessions / b.name)]
+    for backup in backups[1:max(1, len(backups) - keep_backups)]:  # the oldest one stays
+        freed += _remove(layout, backup)
+    finished = [s for s in _folders(sessions) if _restored(s) and not (s / "partial-active").exists()]
+    for folder in finished[:max(0, len(finished) - keep_sessions)]:
+        freed += _remove(layout, folder)
+    profiles = layout.state_dir / "profiles"
+    for profile in (p for p in profiles.iterdir() if p.is_dir()) if profiles.is_dir() else []:
+        old = sorted(p for p in profile.iterdir() if p.is_dir() and p.name.startswith("Saved.prev-") and SESSION_ID.match(p.name[len("Saved.prev-"):]))
+        for folder in old[:max(0, len(old) - keep_old_profiles)]:
+            freed += _remove(layout, folder)
+    return freed
+
+
+def tidy(layout, log=print):
+    """prune(), but a problem here must never fail or delay a play session."""
+    try:
+        freed = prune(layout)
+    except Exception as error:  # noqa: BLE001 - housekeeping only
+        log(f"[WARN] Could not clean up old session files: {error!r}")
+        return 0
+    if freed:
+        log(f"Cleaned up old session files ({freed / 1_000_000:.0f} MB freed).")
+    return freed

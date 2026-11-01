@@ -80,8 +80,8 @@ def remember_game_dir(state_dir, game_dir):
     if not isinstance(settings, dict):
         settings = {}
     settings["game_dir"] = str(game_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(settings), encoding="utf-8")
+    from .fsutil import write_json
+    write_json(path, settings)  # written to a temporary file and renamed: a crash never leaves half a settings file
 
 
 def _drive_roots():

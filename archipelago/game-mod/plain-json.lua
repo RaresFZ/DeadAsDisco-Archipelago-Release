@@ -18,6 +18,12 @@ function M.read(path)
     local f=io.open(path,'r');if not f then return '' end
     local value=f:read('*a');f:close();return value
 end
+-- nil (not '') when the file cannot be opened. With read() a sharing violation (the client replacing the file, an antivirus scan) looks
+-- like an empty file, and an empty entitlement list means "remove every skill".
+function M.try(path)
+    local f=io.open(path,'r');if not f then return nil end
+    local value=f:read('*a');f:close();return value
+end
 function M.exists(path)
     local f=io.open(path,'r');if not f then return false end;f:close();return true
 end

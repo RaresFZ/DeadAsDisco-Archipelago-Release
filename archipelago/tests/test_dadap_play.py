@@ -88,7 +88,7 @@ class PlayFlowTests(unittest.TestCase):
         pins.PROXY_SHA256, pins.EXE_SHA256 = self.patch
         self.temp.cleanup()
 
-    def run_play(self, info=None, features=None, profile="p"):
+    def run_play(self, info=None, features=None, profile="p", password=None):
         layout = self.layout
         events = self.events
         info = info or {"seed": "SEED123", "team": 0, "player": 1, "slot_data": slot_data()}
@@ -110,7 +110,7 @@ class PlayFlowTests(unittest.TestCase):
             return Process()
 
         def client_runner(command, cwd):
-            events.append(("client", command))
+            events.append(("client", command, os.environ.get(play.PASSWORD_ENV)))
             return Process()
 
         def wait_game(probe, log=None):
@@ -119,7 +119,7 @@ class PlayFlowTests(unittest.TestCase):
             (layout.saved_dir / "SaveGames/PagodaPT_M_0.sav").write_bytes((layout.saved_dir / "SaveGames/PagodaPT_M_0.sav").read_bytes())
             (layout.saved_dir / "SaveGames/marker.txt").write_text("ap progress")
 
-        return play.play(layout, profile, "localhost:38281", "Slot", None, features=features, certificate=self.cert,
+        return play.play(layout, profile, "localhost:38281", "Slot", password, features=features, certificate=self.cert,
                          install_root=ROOT, probe=FakeProbe(), launch_runner=launch_runner, client_runner=client_runner,
                          preflight_fn=lambda: info, wait_game=wait_game, mod_wait=lambda *a, **k: None, guard=lambda *a, **k: None, log=lambda m: None, )
 
@@ -151,6 +151,14 @@ class PlayFlowTests(unittest.TestCase):
             return  # the generated config is also syntax-checked by the Lua fixtures when lupa is installed
         LuaRuntime().execute(f"local c=dofile([[{sdir / 'core/Mods/APBridge/Scripts/ap-config.lua'}]]);"
                              "assert(c.generation and c.launchToken and c.contexts and c.boundContextCount==3)")
+
+    def test_the_password_reaches_the_client_through_the_environment_never_the_command_line(self):
+        self.run_play(password="s3cret")
+        client = [e for e in self.events if isinstance(e, tuple) and e[0] == "client"][0]
+        self.assertNotIn("--password", client[1])
+        self.assertNotIn("s3cret", " ".join(client[1]))
+        self.assertEqual(client[2], "s3cret")                 # the client process inherits it...
+        self.assertNotIn(play.PASSWORD_ENV, os.environ)       # ...and the launcher does not keep it
 
     def test_profile_is_bound_to_one_slot_forever(self):
         self.run_play()
@@ -238,6 +246,72 @@ class PlayFlowTests(unittest.TestCase):
         self.assertEqual(manifest(layout.saved_dir), self.original)
         self.assertFalse(layout.proxy_target.exists())
         self.assertIsNone(session.active_session(layout))
+
+
+class ClientSupervisionTests(unittest.TestCase):
+    """The parts of play() around the client process; they need no game saves."""
+
+    def test_the_password_goes_through_the_environment_never_the_command_line(self):
+        seen = {}
+
+        def runner(command, cwd):
+            seen.update(command=command, cwd=cwd, password=os.environ.get(play.PASSWORD_ENV))
+            return "process"
+        self.assertEqual(play.start_client(runner, ["client", "--server", "h:1"], "root", "s3cret"), "process")
+        self.assertEqual(seen["password"], "s3cret")               # the client process inherits it...
+        self.assertNotIn(play.PASSWORD_ENV, os.environ)            # ...and the launcher does not keep it
+        self.assertNotIn("s3cret", " ".join(seen["command"]))
+        play.start_client(runner, ["client"], "root", None)
+        self.assertIsNone(seen["password"])
+
+    def test_the_password_is_removed_from_the_environment_even_when_the_start_fails(self):
+        def boom(command, cwd):
+            raise OSError("cannot start")
+        with self.assertRaises(OSError):
+            play.start_client(boom, ["client"], "root", "s3cret")
+        self.assertNotIn(play.PASSWORD_ENV, os.environ)
+
+    def watch(self, status):
+        import threading
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+            folder = Path(folder)
+            (folder / "client.log").write_text("INFO:x:hello\nKeyError: 3\n", encoding="utf-8")
+            if status is not None:
+                (folder / "status.json").write_text(json.dumps(status), encoding="utf-8")
+
+            class Dead:
+                def poll(self):
+                    return 1
+
+            said, stop = [], threading.Event()
+            stop.wait = lambda timeout=None: False  # no real sleeping
+            play._watch_client(Dead(), folder / "status.json", folder / "client.log", stop, said.append)
+            return said
+
+    def test_a_client_that_dies_on_its_own_is_reported_with_its_last_log_line(self):
+        for status in ({"connection": "disconnected"}, None):  # no status file at all counts too
+            said = self.watch(status)
+            self.assertEqual(len(said), 1)
+            self.assertTrue(said[0].startswith("!!! The Archipelago client stopped (exit code 1: KeyError: 3)"), said)
+
+    def test_a_refusal_the_client_chose_is_left_to_the_window_that_already_explained_it(self):
+        self.assertEqual(self.watch({"connection": "blocked", "error": "Server seed mismatch"}), [])
+
+    def test_a_client_that_is_still_running_is_not_reported(self):
+        import threading
+
+        class Alive:
+            def poll(self):
+                return None
+
+        stop, said, rounds = threading.Event(), [], []
+
+        def wait(timeout=None):
+            rounds.append(timeout)
+            return len(rounds) > 3  # three polls, then the session ends
+        stop.wait = wait
+        play._watch_client(Alive(), "nowhere.json", "nowhere.log", stop, said.append)
+        self.assertEqual(said, [])
 
 
 if __name__ == "__main__":
